@@ -1,8 +1,11 @@
 """The only MoviePilot scraping compatibility boundary; never changes host policy."""
-from pathlib import Path
+
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
 from requests.exceptions import RequestException
-from .core import ALIASES, image_candidates, identities, parse_nfo, fingerprint
+
+from .core import ALIASES, fingerprint, identities, image_candidates, parse_nfo
 from .errors import SourceUnavailable, TaskStopped
 
 
@@ -10,6 +13,7 @@ class MoviePilotSource:
     def __init__(self):
         from app.chain.media import MediaChain
         from app.chain.scraping import ScrapingChain
+
         self.media = MediaChain()
         self.scraper = ScrapingChain()
         self.begin_run()
@@ -21,24 +25,36 @@ class MoviePilotSource:
     @staticmethod
     def parse(path):
         from app.sdk.media import MetaInfoPath
+
         meta = MetaInfoPath(path)
         return meta.begin_season, meta.begin_episode
 
     def resolve(self, target, images=False):
-        cache_key = (target.key, target.season, target.episode,
-                     tuple(fingerprint(Path(target.series) / "tvshow.nfo") or []) if target.series else ())
+        cache_key = (
+            target.key,
+            target.season,
+            target.episode,
+            tuple(fingerprint(Path(target.series) / "tvshow.nfo") or []) if target.series else (),
+        )
         if cache_key in self._contexts:
             meta, info = self._contexts[cache_key]
             if images and cache_key not in self._images_ready:
                 self.media.obtain_images(info)
                 self._images_ready.add(cache_key)
             return meta, info
-        from app.sdk.media import MetaInfoPath, normalize_media_source
         from app.schemas.types import MediaType
-        meta = MetaInfoPath(Path(target.media if target.kind in {"episode", "season"} else target.path))
+        from app.sdk.media import MetaInfoPath, normalize_media_source
+
+        meta = MetaInfoPath(
+            Path(target.media if target.kind in {"episode", "season"} else target.path)
+        )
         meta.type = MediaType.MOVIE if target.kind == "movie" else MediaType.TV
         # IDs in episode/season NFOs can be episode/season IDs. Use the parent series identity.
-        identity_path = Path(target.series) / "tvshow.nfo" if target.kind in {"season", "episode"} else target.nfo()
+        identity_path = (
+            Path(target.series) / "tvshow.nfo"
+            if target.kind in {"season", "episode"}
+            else target.nfo()
+        )
         ids = {}
         if identity_path.is_file():
             try:
@@ -51,7 +67,9 @@ class MoviePilotSource:
                 continue
             source = normalize_media_source(name)
             if source:
-                info = self.media.recognize_media(meta=meta, media_source=source, media_id=ids[name])
+                info = self.media.recognize_media(
+                    meta=meta, media_source=source, media_id=ids[name]
+                )
                 break
         if info is None:
             path = target.series if target.kind in {"season", "episode"} else target.path
@@ -61,9 +79,14 @@ class MoviePilotSource:
             raise SourceUnavailable("官方识别未找到媒体身份")
         if target.kind in {"season", "episode"}:
             from app.sdk.media import resolve_media_identity
+
             source, media_id = resolve_media_identity(media=info)
-            info = self.media.recognize_media(meta=meta, media_source=source, media_id=media_id,
-                                             episode_group=getattr(info, "episode_group", None))
+            info = self.media.recognize_media(
+                meta=meta,
+                media_source=source,
+                media_id=media_id,
+                episode_group=getattr(info, "episode_group", None),
+            )
             if info is None:
                 raise SourceUnavailable("官方识别未找到季集信息")
         if images:
@@ -75,6 +98,7 @@ class MoviePilotSource:
     def candidates(self, target, assets):
         """Compatibility helper. Workers consume iter_candidates lazily."""
         import threading
+
         result = {}
         for asset in assets:
             result[asset] = []
@@ -85,8 +109,9 @@ class MoviePilotSource:
         return result
 
     def iter_candidates(self, target, asset, stop):
-        from app.sdk.network import RequestUtils
         from app.sdk.config import settings
+        from app.sdk.network import RequestUtils
+
         if stop.is_set():
             raise TaskStopped()
         meta, info = self.resolve(target, asset != "nfo")
@@ -110,7 +135,10 @@ class MoviePilotSource:
                 continue
             if target.kind == "season" and name.lower().startswith("season"):
                 from app.schemas.types import ScrapingTarget
-                if not self.scraper._matches_image_season(name, ScrapingTarget.SEASON, target.season):
+
+                if not self.scraper._matches_image_season(
+                    name, ScrapingTarget.SEASON, target.season
+                ):
                     continue
             try:
                 response = RequestUtils(proxies=settings.PROXY, timeout=30).get_res(url=str(url))
@@ -136,13 +164,25 @@ class MoviePilotSource:
         if existing:
             return existing[0]
         from app.schemas.file import FileItem
-        from app.schemas.types import ScrapingTarget, ScrapingMetadata
-        item = FileItem(storage="local", type="dir" if target.kind in {"tv", "season"} else "file",
-                        path=target.path, name=Path(target.path).name, basename=Path(target.path).stem)
-        parent = FileItem(storage="local", type="dir", path=str(target.directory()), name=target.directory().name)
+        from app.schemas.types import ScrapingMetadata, ScrapingTarget
+
+        item = FileItem(
+            storage="local",
+            type="dir" if target.kind in {"tv", "season"} else "file",
+            path=target.path,
+            name=Path(target.path).name,
+            basename=Path(target.path).stem,
+        )
+        parent = FileItem(
+            storage="local", type="dir", path=str(target.directory()), name=target.directory().name
+        )
         _, path = self.scraper._get_target_fileitem_and_path(
-            current_fileitem=item, item_type=ScrapingTarget[target.kind.upper()],
-            metadata_type=ScrapingMetadata[asset.upper()], filename_hint=hint, parent_fileitem=parent)
+            current_fileitem=item,
+            item_type=ScrapingTarget[target.kind.upper()],
+            metadata_type=ScrapingMetadata[asset.upper()],
+            filename_hint=hint,
+            parent_fileitem=parent,
+        )
         if not path:
             raise ValueError("官方命名接口未提供目标路径")
         return Path(path)
