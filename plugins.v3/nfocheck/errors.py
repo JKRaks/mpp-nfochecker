@@ -1,5 +1,7 @@
 """Failures with actionable categories; diagnostic strings never contain URL secrets."""
+
 import re
+
 from requests.exceptions import RequestException
 
 
@@ -28,10 +30,12 @@ class TaskStopped(Exception):
 # Authorization contains a scheme and a credential separated by whitespace.
 # Match a whole header value, including quoted JSON/Python header dictionaries.
 _AUTHORIZATION = re.compile(
-    r'''(?i)(["']?\bauthorization\b["']?[ \t]*[:=][ \t]*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;\r\n}\]"']+)'''
+    r"""(?i)(["']?\bauthorization\b["']?[ \t]*[:=][ \t]*)"""
+    r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^,;\r\n}\]"']+)"""
 )
 _SECRET_VALUE = re.compile(
-    r'''(?i)(["']?(?:api[_-]?key|token|password)["']?\s*[=:]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]]+)'''
+    r"""(?i)(["']?(?:api[_-]?key|token|password)["']?\s*[=:]\s*)"""
+    r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}\]]+)"""
 )
 
 
@@ -54,5 +58,10 @@ def failure(error):
         category, status = "io", "failed"
     else:
         category, status = "internal", "failed"
-    return {"status": status, "error_code": category, "error_type": type(error).__name__,
-            "message": safe_message(error), "details": getattr(error, "details", {})}
+    return {
+        "status": status,
+        "error_code": category,
+        "error_type": type(error).__name__,
+        "message": safe_message(error),
+        "details": getattr(error, "details", {}),
+    }
