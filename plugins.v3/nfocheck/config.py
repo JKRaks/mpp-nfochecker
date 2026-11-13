@@ -1,7 +1,9 @@
 """Validated user configuration, shared by UI, workflow and worker."""
-from typing import Literal
+
 import re
 from pathlib import Path
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 ASSETS = {
@@ -11,11 +13,24 @@ ASSETS = {
     "episode": ["thumb"],
 }
 Kind = Literal["movie", "tv", "season", "episode"]
-ImageType = Literal["poster", "backdrop", "logo", "banner", "landscape", "thumb", "clearart", "disc"]
+ImageType = Literal[
+    "poster", "backdrop", "logo", "banner", "landscape", "thumb", "clearart", "disc"
+]
 
 
 class Condition(BaseModel):
-    op: Literal["missing", "invalid", "empty", "min_length", "regex", "identity_missing", "conflict", "language_missing", "language_mismatch", "language_unknown"] = "empty"
+    op: Literal[
+        "missing",
+        "invalid",
+        "empty",
+        "min_length",
+        "regex",
+        "identity_missing",
+        "conflict",
+        "language_missing",
+        "language_mismatch",
+        "language_unknown",
+    ] = "empty"
     field: str = "plot"
     value: str = ""
 
@@ -30,12 +45,18 @@ class Condition(BaseModel):
                 raise ValueError("正则表达式无效：" + str(exc)) from exc
         if self.op == "min_length" and (not self.value.isdigit() or int(self.value) < 1):
             raise ValueError("最小长度必须为正整数")
-        if self.op.startswith("language_") and self.field not in {"title", "plot", "outline", "tagline"}:
+        if self.op.startswith("language_") and self.field not in {
+            "title",
+            "plot",
+            "outline",
+            "tagline",
+        }:
             raise ValueError("语言条件仅支持标题、简介、摘要和宣传语")
         if self.field.startswith("/") or ".." in self.field:
             raise ValueError("字段路径必须相对于 NFO 根元素")
         # Validate ElementTree's supported XPath subset before running a scan.
         import xml.etree.ElementTree as ET
+
         try:
             ET.fromstring("<root/>").findall(self.field or "plot")
         except (SyntaxError, KeyError, TypeError) as exc:
@@ -59,19 +80,29 @@ class Rule(BaseModel):
     match: Literal["any", "all"] = "any"
     conditions: list[Condition] = Field(default_factory=list)
     images: list[ImageCheck] = Field(default_factory=list)
-    action: Literal["report", "nfo", "matched_images", "selected_images", "both", "translate", "nfo_translate"] = "report"
+    action: Literal[
+        "report", "nfo", "matched_images", "selected_images", "both", "translate", "nfo_translate"
+    ] = "report"
     selected_images: list[ImageType] = Field(default_factory=list)
     translation_policy: str = "default"
     translation_fields: list[str] = Field(default_factory=lambda: ["plot", "outline"])
 
     @model_validator(mode="after")
     def validate_rule(self):
-        if not self.translation_fields or set(self.translation_fields) - {"title", "plot", "outline", "tagline"}:
+        if not self.translation_fields or set(self.translation_fields) - {
+            "title",
+            "plot",
+            "outline",
+            "tagline",
+        }:
             raise ValueError("请选择有效翻译字段")
         self.translation_fields = list(dict.fromkeys(self.translation_fields))
         if self.action in {"translate", "nfo_translate"} and self.category != "nfo":
             raise ValueError("翻译动作仅用于 NFO 规则")
-        if any(c.op.startswith("language_") and c.field not in self.translation_fields for c in self.conditions):
+        if any(
+            c.op.startswith("language_") and c.field not in self.translation_fields
+            for c in self.conditions
+        ):
             raise ValueError("语言条件字段需要包含在所选翻译字段中")
         if self.category == "nfo" and not self.conditions:
             raise ValueError("NFO 规则至少需要一个条件")
@@ -160,8 +191,25 @@ class Config(BaseModel):
 
 
 def defaults():
-    rules = [Rule(id="nfo", name="NFO 基础完整性", conditions=[
-        Condition(op="missing"), Condition(op="invalid"), Condition(field="title"), Condition(field="plot")])]
-    rules.extend(Rule(id=asset, name=name, category="image", images=[ImageCheck(type=asset)])
-                 for asset, name in [("poster", "主图完整性"), ("logo", "徽标补全"), ("backdrop", "背景图补全"), ("thumb", "单集主图")])
+    rules = [
+        Rule(
+            id="nfo",
+            name="NFO 基础完整性",
+            conditions=[
+                Condition(op="missing"),
+                Condition(op="invalid"),
+                Condition(field="title"),
+                Condition(field="plot"),
+            ],
+        )
+    ]
+    rules.extend(
+        Rule(id=asset, name=name, category="image", images=[ImageCheck(type=asset)])
+        for asset, name in [
+            ("poster", "主图完整性"),
+            ("logo", "徽标补全"),
+            ("backdrop", "背景图补全"),
+            ("thumb", "单集主图"),
+        ]
+    )
     return Config(rule_sets=[RuleSet(id="default", name="基础完整性", rules=rules)]).model_dump()

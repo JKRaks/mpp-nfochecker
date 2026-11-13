@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
-.pytest_cache/
 frontend/node_modules/
 artifacts/
 .env*
 secrets.json
 *.sqlite3*
+
