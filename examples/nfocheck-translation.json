@@ -1,0 +1,16 @@
+{
+  "version": 3,
+  "enabled": false,
+  "backup": {"nfo": true, "images": false, "cleanup": true, "days": 30, "versions": 3},
+  "rule_sets": [{
+    "id": "translation-example",
+    "name": "简介翻译与徽标补齐",
+    "roots": ["/media/example"],
+    "kinds": ["movie", "tv", "episode"],
+    "emby": "off",
+    "rules": [
+      {"id": "missing-language", "name": "补齐中文简介", "category": "nfo", "match": "any", "conditions": [{"op": "language_missing", "field": "plot"}, {"op": "language_missing", "field": "outline"}], "action": "translate", "translation_policy": "default", "translation_fields": ["plot", "outline"]},
+      {"id": "logo", "name": "仅补齐徽标", "category": "image", "images": [{"type": "logo", "missing": true, "damaged": true}], "action": "matched_images"}
+    ]
+  }]
+}
