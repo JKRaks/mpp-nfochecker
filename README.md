@@ -1,4 +1,4 @@
-# NfoCheck 1.2.0
+# NfoCheck 1.2.1
 
 MoviePilot V3 插件，宿主接口基线 3.2.5。
 

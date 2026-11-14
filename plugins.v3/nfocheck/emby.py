@@ -95,6 +95,16 @@ class EmbyGateway:
         self.validate_item(server, record, item)
         return item
 
+    def detail(self, server, item_id):
+        # Emby exposes global item lookup through the Items query. Its single-item
+        # /Items/{id} route is not available on all supported Emby versions.
+        page = self.request(server, "GET", "Items", {"Ids": str(item_id), "Limit": 2,
+            "Fields": "Path,ProviderIds,MediaSources,Overview,Taglines,LockedFields"})
+        rows = page.get("Items", []) if isinstance(page, dict) else []
+        if not isinstance(rows, list) or len(rows) != 1 or str(rows[0].get("Id")) != str(item_id):
+            raise ValueError("Emby 最新条目查询未返回唯一的目标 ID")
+        return rows[0]
+
     @staticmethod
     def validate_item(server, record, item, expected_id=None):
         """Validate the actual item used for a refresh, including fresh GET responses."""
@@ -193,8 +203,7 @@ class EmbyGateway:
                     results.append(prior)
                     continue
                 located = self.locate(server, record)
-                detail_params = {"Fields": "Path,ProviderIds,MediaSources,Overview,Taglines"}
-                item = self.request(server.name, "GET", f"Items/{located['Id']}", detail_params)
+                item = self.detail(server.name, located["Id"])
                 self.validate_item(server, record, item, expected_id=located["Id"])
                 fields, assets = self.missing(item, record, inspector) if record["emby_mode"] == "compare" else ([], [])
                 nfo = prior.get("nfo", "nfo" in changed or bool(fields))
@@ -228,7 +237,7 @@ class EmbyGateway:
                 while status not in {"verified", "unconfirmed", "locked"} and not stop.is_set() and time.monotonic() < deadline:
                     if stop.wait(min(self.config.emby_poll, max(0, deadline - time.monotonic()))):
                         break
-                    updated = self.request(server.name, "GET", f"Items/{item['Id']}", detail_params)
+                    updated = self.detail(server.name, item["Id"])
                     self.validate_item(server, record, updated, expected_id=located["Id"])
                     status = self.verified(updated, record, nfo, images, baseline, locked)
                 receipt.update(status=status, message={"unconfirmed": "原有图片标签未变化，是否采用新文件尚未确认",
