@@ -47,7 +47,7 @@ class NfoCheck(_PluginBase):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "scraper.png"
-    plugin_version = "1.2.1"
+    plugin_version = "1.2.2"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""
@@ -101,7 +101,17 @@ class NfoCheck(_PluginBase):
         if config.notify == "issues" and not issues:
             return
         from app.schemas.types import NotificationChannel, MessageType
-        examples = [i["target"]["path"] for i in report["items"] if i["hits"] or i["conflicts"]][:5]
+        candidates = [i for i in report["items"] if i.get("attempted") or i.get("results") or i.get("sync")]
+        def priority(item):
+            failed = any(r.get("status") in {"failed", "unimproved", "manual"} for r in item.get("results", {}).values())
+            pending = any(r.get("status") not in {"complete", "verified"} for r in item.get("sync", []))
+            return (not failed, not pending)
+        candidates.sort(key=priority)
+        prefix = "处理记录示例（失败及待确认优先）"
+        if report["dry_run"]:
+            candidates = [i for i in report["items"] if i["hits"] or i["conflicts"]]
+            prefix = "试运行命中示例（未执行修补）"
+        examples = [prefix] + [i["target"]["path"] for i in candidates[:5]] if candidates else []
         for channel in config.notify_channels or [None]:
             try:
                 self.post_message(channel=NotificationChannel(channel) if channel else None, mtype=MessageType.Plugin,

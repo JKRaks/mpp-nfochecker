@@ -1,5 +1,7 @@
 """Emby read/refresh only. Never uploads images or replaces all images."""
 import time
+import hashlib
+import requests
 import threading
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlencode
@@ -164,7 +166,58 @@ class EmbyGateway:
     def image_tag(item, kind):
         return item.get("BackdropImageTags", []) if kind == "Backdrop" else item.get("ImageTags", {}).get(kind)
 
-    def verified(self, updated, record, nfo, images, baseline, locked):
+    def image_matches_version(self, server, item, record, asset):
+        result = record.get("results", {}).get(asset, {})
+        path, version = result.get("path"), result.get("version")
+        if not path or not version:
+            return False
+        target = Target(**record["target"])
+        key = (server, str(item["Id"]), asset, version, str(self.image_tag(item, image_type(target, asset))))
+        limit = 20 * 1024 * 1024
+        try:
+            local = Path(path)
+            if not within(local, target.root) or local.stat().st_size > limit:
+                return False
+            if hashlib.sha256(local.read_bytes()).hexdigest() != version:
+                return False
+            if key in self.image_verified:
+                return True
+            budget_key = (server, str(item["Id"]), asset)
+            if self.image_reads.get(budget_key, 0) >= 8 or self.image_reads.get(key, 0) >= 4 or self.stop.is_set():
+                return False
+            remaining = self.image_deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            service = self.services.get(server)
+            host, token = getattr(service, "_host", None), getattr(service, "_apikey", None)
+            if not host or not token:
+                return False
+            self.image_reads[budget_key] = self.image_reads.get(budget_key, 0) + 1
+            self.image_reads[key] = self.image_reads.get(key, 0) + 1
+            # Read the original image, without resizing or lossy comparison. Never log credentials.
+            url = host.rstrip("/") + f"/Items/{item['Id']}/Images/{image_type(target, asset)}/0"
+            with requests.get(url, params={"api_key": token}, stream=True,
+                              timeout=(min(5, remaining), min(10, remaining)), allow_redirects=False) as response:
+                if response.status_code != 200:
+                    return False
+                digest, size = hashlib.sha256(), 0
+                for chunk in response.iter_content(65536):
+                    if self.stop.is_set():
+                        raise TaskStopped()
+                    if time.monotonic() >= self.image_deadline:
+                        return False
+                    size += len(chunk)
+                    if size > limit:
+                        return False
+                    digest.update(chunk)
+                if size and digest.hexdigest() == version and hashlib.sha256(local.read_bytes()).hexdigest() == version:
+                    self.image_verified.add(key)
+                    return True
+        except (OSError, requests.RequestException):
+            return False
+        return False
+
+    def verified(self, updated, record, nfo, images, baseline, locked, server=None):
         target = Target(**record["target"])
         selected_fields = record.get("results", {}).get("nfo", {}).get("changed_fields")
         nfo_ok = not nfo or (not locked and all(
@@ -183,12 +236,16 @@ class EmbyGateway:
             return "locked"
         if not nfo_ok or not images_ok:
             return "unimproved"
-        if any(baseline.get(a) and baseline[a] == self.image_tag(updated, image_type(target, a)) for a in images):
+        tracked = {a for a in images if record.get("results", {}).get(a, {}).get("version")}
+        if tracked and (server is None or not all(self.image_matches_version(server, updated, record, a) for a in sorted(tracked))):
+            return "unconfirmed"
+        if any(baseline.get(a) and baseline[a] == self.image_tag(updated, image_type(target, a)) for a in images - tracked):
             return "unconfirmed"
         return "verified"
 
     def refresh(self, record, inspector, stop):
         self.stop = stop
+        self.image_verified, self.image_reads = set(), {}
         target = Target(**record["target"])
         results = []
         changed = {asset for asset, value in record["results"].items() if value["status"] == "repaired"}
@@ -213,15 +270,16 @@ class EmbyGateway:
                     results.append({"server": server.name, "status": "complete", "signature": record["signature"], "message": "无需刷新"})
                     continue
                 baseline = prior.get("baseline", {a: self.image_tag(item, image_type(target, a)) for a in images})
+                self.image_deadline = time.monotonic() + self.config.emby_timeout
                 status = "pending"
-                if prior.get("submitted"):
+                if prior.get("submitted") or images and all(record.get("results", {}).get(a, {}).get("version") for a in images):
                     # Verify an existing submission before considering any new write request.
-                    status = self.verified(item, record, nfo, images, baseline, locked)
+                    status = self.verified(item, record, nfo, images, baseline, locked, server.name)
                 if locked and not images:
                     results.append({"server": server.name, "status": "locked", "signature": record["signature"],
                                     "message": "条目存在锁定字段，未刷新文字元数据"})
                     continue
-                if not prior.get("submitted") or status == "unimproved":
+                if status != "verified" and (not prior.get("submitted") or status == "unimproved"):
                     params = {"Recursive": "false", "MetadataRefreshMode": "FullRefresh" if nfo and not locked else "ValidationOnly",
                               "ImageRefreshMode": "FullRefresh" if images else "ValidationOnly",
                               "ReplaceAllMetadata": "true" if nfo and not locked else "false", "ReplaceAllImages": "false"}
@@ -233,14 +291,14 @@ class EmbyGateway:
                         self.on_submitted(receipt)
                     self.request(server.name, "POST", f"Items/{item['Id']}/Refresh", params)
                     status = "submitted"
-                deadline = time.monotonic() + self.config.emby_timeout
-                while status not in {"verified", "unconfirmed", "locked"} and not stop.is_set() and time.monotonic() < deadline:
+                deadline = self.image_deadline
+                while status not in {"verified", "locked"} and not stop.is_set() and time.monotonic() < deadline:
                     if stop.wait(min(self.config.emby_poll, max(0, deadline - time.monotonic()))):
                         break
                     updated = self.detail(server.name, item["Id"])
                     self.validate_item(server, record, updated, expected_id=located["Id"])
-                    status = self.verified(updated, record, nfo, images, baseline, locked)
-                receipt.update(status=status, message={"unconfirmed": "原有图片标签未变化，是否采用新文件尚未确认",
+                    status = self.verified(updated, record, nfo, images, baseline, locked, server.name)
+                receipt.update(server=server.name, item_id=str(item["Id"]), signature=record["signature"], status=status, message={"unconfirmed": "图片内容尚未核实为本地提交版本，已保留待同步；重试将先复查",
                                "locked": "条目存在锁定字段，文字元数据未刷新", "unimproved": "已提交版本尚未在 Emby 中确认；再次重试将先复查"}.get(status, ""))
                 results.append(receipt)
             except (StorageError, TaskStopped):
