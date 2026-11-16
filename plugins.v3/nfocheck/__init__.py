@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 from app.api.deps import get_current_active_manage_user
 from app.sdk.plugin import _PluginBase
 from app.sdk.logging import logger
+from .api_models import (BackupDetailData, DeleteRunsData, LiveData, OkData, PendingData, ReportData,
+                         SettingsData, StatusData, StopData)
 from .config import ASSETS, Config, defaults
 from .fields import NFO_FIELDS
 from .adapters import MoviePilotSource
@@ -50,7 +52,7 @@ class NfoCheck(_PluginBase):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "scraper.png"
-    plugin_version = "1.2.4"
+    plugin_version = "1.2.5"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""
@@ -234,13 +236,21 @@ class NfoCheck(_PluginBase):
         return {"ok": True, "message": "将在当前文件操作结束后停止"}
 
     def get_api(self):
-        return [{"path": "/" + name, "endpoint": endpoint, "methods": [method], "auth": "bear", "summary": name}
-                for name, endpoint, method in [
-                    ("settings", self.api_settings, "GET"), ("settings", self.api_save, "POST"),
-                    ("status", self.api_status, "GET"), ("report", self.api_report, "GET"),
-                    ("start", self.api_start, "POST"), ("stop", self.api_stop, "POST"),
-                    ("delete_runs", self.api_delete_runs, "POST"), ("pending", self.api_pending, "GET"),
-                    ("backup_detail", self.api_backup_detail, "GET")]]
+        # 每个普通 JSON 路由声明与实际输出一致的响应模型，直接返回业务对象（不使用 schemas.Response 外层包装）。
+        routes = [
+            ("settings", self.api_settings, "GET", SettingsData),
+            ("settings", self.api_save, "POST", OkData),
+            ("status", self.api_status, "GET", StatusData),
+            ("report", self.api_report, "GET", ReportData),
+            ("start", self.api_start, "POST", LiveData),
+            ("stop", self.api_stop, "POST", StopData),
+            ("delete_runs", self.api_delete_runs, "POST", DeleteRunsData),
+            ("pending", self.api_pending, "GET", PendingData),
+            ("backup_detail", self.api_backup_detail, "GET", BackupDetailData),
+        ]
+        return [{"path": "/" + name, "endpoint": endpoint, "methods": [method], "auth": "bear", "summary": name,
+                 "response_model": model}
+                for name, endpoint, method, model in routes]
 
     def get_actions(self):
         return [{"id": "inspect", "name": "巡检 NFO 和图片", "func": self.workflow_inspect,
