@@ -1,10 +1,11 @@
 import io
 from pathlib import Path
+
 import pytest
-from PIL import Image
-from nfocheck.config import Config, RuleSet, Rule, Condition, ImageCheck
+from nfocheck.config import Condition, Config, ImageCheck, Rule, RuleSet
 from nfocheck.core import Inspector, Target, discover, image_candidates
 from nfocheck.engine import Engine
+from PIL import Image
 
 
 def png(size=(100, 100)):
@@ -14,13 +15,32 @@ def png(size=(100, 100)):
 
 
 def config(root, **kwargs):
-    return Config(enabled=True, stable_seconds=0, interval=0, rule_sets=[RuleSet(id="r", roots=[str(root)], rules=[
-        Rule(id="n", conditions=[Condition(field="plot")], action="nfo"),
-        Rule(id="i", category="image", images=[ImageCheck(type="logo")], action="matched_images")])], **kwargs)
+    return Config(
+        enabled=True,
+        stable_seconds=0,
+        interval=0,
+        rule_sets=[
+            RuleSet(
+                id="r",
+                roots=[str(root)],
+                rules=[
+                    Rule(id="n", conditions=[Condition(field="plot")], action="nfo"),
+                    Rule(
+                        id="i",
+                        category="image",
+                        images=[ImageCheck(type="logo")],
+                        action="matched_images",
+                    ),
+                ],
+            )
+        ],
+        **kwargs,
+    )
 
 
 class Source:
     from nfocheck.core import fallback_parse as parse
+
     parse = staticmethod(parse)
     calls = None
 
@@ -29,8 +49,19 @@ class Source:
 
     def candidates(self, target, assets):
         self.calls.append(assets)
-        return {a: [(target.nfo() if a == "nfo" else target.directory() / f"{a}.png",
-                      b"<movie><title>Film</title><plot>Complete synopsis</plot></movie>" if a == "nfo" else png())] for a in assets}
+        return {
+            a: [
+                (
+                    target.nfo() if a == "nfo" else target.directory() / f"{a}.png",
+                    (
+                        b"<movie><title>Film</title><plot>Complete synopsis</plot></movie>"
+                        if a == "nfo"
+                        else png()
+                    ),
+                )
+            ]
+            for a in assets
+        }
 
 
 @pytest.fixture
@@ -51,7 +82,9 @@ def test_merge_and_selective_repair(film, tmp_path):
     before = (poster.read_bytes(), poster.stat().st_mtime_ns, movie.read_bytes())
     cfg = config(root)
     # A second independent set must union, not replace the first set's actions.
-    cfg.rule_sets.append(RuleSet(id="second", roots=[str(root)], rules=[cfg.rule_sets[0].rules.pop()]))
+    cfg.rule_sets.append(
+        RuleSet(id="second", roots=[str(root)], rules=[cfg.rule_sets[0].rules.pop()])
+    )
     engine = Engine(cfg.model_dump(), tmp_path / "data", Source())
     run = engine.execute("inspect")
     assert run["items"][0]["actions"] == ["logo", "nfo"]
@@ -89,9 +122,11 @@ def test_bad_candidate_keeps_original_and_cools_down(film, tmp_path):
     root, movie = film
     movie.with_suffix(".nfo").write_text("<movie><plot/></movie>")
     source = Source()
+
     def bad(target, assets):
         source.calls.append(assets)
         return {a: [(target.nfo(), b"<movie><plot/></movie>")] for a in assets}
+
     source.candidates = bad
     cfg = config(root)
     cfg.rule_sets[0].rules = cfg.rule_sets[0].rules[:1]
@@ -111,7 +146,9 @@ def test_season_root_alias_and_episode_identity(tmp_path):
     season.mkdir(parents=True)
     episode = season / "Show S01E02.strm"
     episode.write_text("https://example.invalid/video")
-    episode.with_suffix(".nfo").write_text('<episodedetails><season>1</season><episode>2</episode><uniqueid type="tmdb">456</uniqueid></episodedetails>')
+    episode.with_suffix(".nfo").write_text(
+        '<episodedetails><season>1</season><episode>2</episode><uniqueid type="tmdb">456</uniqueid></episodedetails>'
+    )
     (show / "season01-poster.png").write_bytes(png())
     cfg = config(tmp_path)
     cfg.rule_sets[0].kinds = ["tv", "season", "episode"]
@@ -122,7 +159,9 @@ def test_season_root_alias_and_episode_identity(tmp_path):
     assert image_candidates(t, "poster") == [show / "season01-poster.png"]
     t = next(t for t in targets if t.kind == "episode")
     assert not Inspector(cfg).inspect(t)["conflicts"]
-    episode.with_suffix(".nfo").write_text("<episodedetails><season>2</season><episode>2</episode></episodedetails>")
+    episode.with_suffix(".nfo").write_text(
+        "<episodedetails><season>2</season><episode>2</episode></episodedetails>"
+    )
     record = Inspector(cfg).inspect(t)
     assert record["conflicts"] and not record["actions"]
 

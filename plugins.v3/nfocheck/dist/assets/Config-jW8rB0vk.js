@@ -1,1 +1,0 @@
-import{_ as s,a as t,b as a,A as _}from"./App-DSYkKsVu.js";const u=s({__name:"Config",props:{api:{},pluginId:{}},emits:["close"],setup(i,{emit:e}){const p=e;return(o,n)=>(t(),a(_,{"config-view":"",api:i.api,"plugin-id":i.pluginId,onClose:n[0]||(n[0]=l=>p("close"))},null,8,["api","plugin-id"]))}});export{u as default};

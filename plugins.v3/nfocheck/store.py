@@ -1,4 +1,5 @@
 """Atomic reports, bounded history and optional versioned sidecar backups."""
+
 import copy
 import hashlib
 import json
@@ -9,9 +10,10 @@ import threading
 import time
 import uuid
 from pathlib import Path
+
 from .core import Target, fingerprint, within
 from .errors import FileConflict, StorageError
-from .state import SCHEMA_VERSION, ACTIVE_PHASES, adapt_report, item_status, normalize_pending
+from .state import ACTIVE_PHASES, SCHEMA_VERSION, adapt_report, item_status, normalize_pending
 
 
 def atomic_bytes(path, data, mode=None):
@@ -61,8 +63,14 @@ class Store:
         if value.get("schema_version") == SCHEMA_VERSION and "entries" in value:
             entries = value["entries"]
         else:
-            entries = {key: {**entry, "legacy": True} if isinstance(entry, dict) else
-                       {"signature": entry, "legacy": True} for key, entry in value.items()}
+            entries = {
+                key: (
+                    {**entry, "legacy": True}
+                    if isinstance(entry, dict)
+                    else {"signature": entry, "legacy": True}
+                )
+                for key, entry in value.items()
+            }
         if name == "pending_sync":
             return {key: normalize_pending(entry) for key, entry in entries.items()}
         return entries
@@ -76,11 +84,18 @@ class Store:
             with self._report_lock:
                 if name.startswith("runs/"):
                     self.validate_run_id(name[5:])
-                if name.startswith("runs/") or name in {"attempts", "ignored", "pending_sync", "sync_receipts"}:
+                if name.startswith("runs/") or name in {
+                    "attempts",
+                    "ignored",
+                    "pending_sync",
+                    "sync_receipts",
+                }:
                     old = self.read(name)
                     if old is not None and old.get("schema_version", 1) < SCHEMA_VERSION:
                         self.backup_legacy(name)
-                atomic_bytes(path, json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
+                atomic_bytes(
+                    path, json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+                )
                 if name.startswith("runs/"):
                     self._save_summary(path, value)
                     if self._view_cache and self._view_cache[0] == name[5:]:
@@ -90,9 +105,25 @@ class Store:
 
     @staticmethod
     def _summary(run):
-        result = {k: copy.deepcopy(run[k]) for k in
-                  ("id", "schema_version", "created", "updated", "status", "phase", "outcome", "exit_reason",
-                   "dry_run", "summary", "counts", "batches", "emby_enabled") if k in run}
+        result = {
+            k: copy.deepcopy(run[k])
+            for k in (
+                "id",
+                "schema_version",
+                "created",
+                "updated",
+                "status",
+                "phase",
+                "outcome",
+                "exit_reason",
+                "dry_run",
+                "summary",
+                "counts",
+                "batches",
+                "emby_enabled",
+            )
+            if k in run
+        }
         result.update(item_count=len(run.get("items", [])), error_count=len(run.get("errors", [])))
         return result
 
@@ -131,10 +162,19 @@ class Store:
                 journal = self.read_state("attempts")
                 by_path = {}
                 for key, entry in journal.items():
-                    if entry.get("run_id") == run["id"] and entry.get("result") and entry.get("target"):
-                        by_path.setdefault(entry["target"]["path"], []).append((key.rsplit(":", 1)[-1], entry))
+                    if (
+                        entry.get("run_id") == run["id"]
+                        and entry.get("result")
+                        and entry.get("target")
+                    ):
+                        by_path.setdefault(entry["target"]["path"], []).append(
+                            (key.rsplit(":", 1)[-1], entry)
+                        )
                 for item in run.get("items", []):
-                    records = sorted(by_path.get(item["target"]["path"], []), key=lambda row: row[1]["result"].get("attempted_at", 0))
+                    records = sorted(
+                        by_path.get(item["target"]["path"], []),
+                        key=lambda row: row[1]["result"].get("attempted_at", 0),
+                    )
                     for asset, entry in records:
                         item.setdefault("results", {})[asset] = entry["result"]
                         item.update(entry.get("resume", {}))
@@ -149,15 +189,29 @@ class Store:
 
     def pending_page(self, page=1, page_size=100):
         entries = self.read_state("pending_sync")
-        rows = [{"key": key, "target_id": value.get("target_id"), "target": value.get("target"),
-                 "server": value.get("server", ""), "status": value.get("status", "needs_recheck"),
-                 "message": value.get("sync", {}).get("message") or value.get("message", "旧记录待重新确认" if value.get("legacy") else ""),
-                 "updated": value.get("updated", 0), "version": value.get("version")} for key, value in entries.items()]
+        rows = [
+            {
+                "key": key,
+                "target_id": value.get("target_id"),
+                "target": value.get("target"),
+                "server": value.get("server", ""),
+                "status": value.get("status", "needs_recheck"),
+                "message": value.get("sync", {}).get("message")
+                or value.get("message", "旧记录待重新确认" if value.get("legacy") else ""),
+                "updated": value.get("updated", 0),
+                "version": value.get("version"),
+            }
+            for key, value in entries.items()
+        ]
         rows.sort(key=lambda row: row.get("updated", 0), reverse=True)
         page_size = max(1, min(page_size, 100))
         page = max(1, min(page, max(1, (len(rows) + page_size - 1) // page_size)))
-        return {"items": rows[(page - 1) * page_size:page * page_size], "total": len(rows),
-                "page": page, "page_size": page_size}
+        return {
+            "items": rows[(page - 1) * page_size : page * page_size],
+            "total": len(rows),
+            "page": page,
+            "page_size": page_size,
+        }
 
     @staticmethod
     def validate_run_id(run_id):
@@ -167,7 +221,11 @@ class Store:
     def report(self, run_id):
         self.validate_run_id(run_id)
         with self._report_lock:
-            result = copy.deepcopy(self._active[run_id]) if run_id in self._active else self.read("runs/" + run_id)
+            result = (
+                copy.deepcopy(self._active[run_id])
+                if run_id in self._active
+                else self.read("runs/" + run_id)
+            )
         if result is None:
             raise ValueError("运行记录不存在")
         return adapt_report(result)
@@ -178,7 +236,11 @@ class Store:
         return [stat.st_mtime_ns, stat.st_size]
 
     def _save_summary(self, path, run):
-        entry = {"schema_version": SCHEMA_VERSION, "signature": self._signature(path), "summary": self._summary(run)}
+        entry = {
+            "schema_version": SCHEMA_VERSION,
+            "signature": self._signature(path),
+            "summary": self._summary(run),
+        }
         self.write("run_summaries/" + path.stem, entry)
         self._summaries[path.stem] = entry
         return entry
@@ -188,14 +250,32 @@ class Store:
             result = []
             for path in (self.directory / "runs").glob("*.json"):
                 entry = self._summaries.get(path.stem) or self.read("run_summaries/" + path.stem)
-                if not entry or entry.get("schema_version") != SCHEMA_VERSION or entry["signature"] != self._signature(path):
+                if (
+                    not entry
+                    or entry.get("schema_version") != SCHEMA_VERSION
+                    or entry["signature"] != self._signature(path)
+                ):
                     # One-time migration for old reports, and recovery after an interrupted save.
                     entry = self._save_summary(path, self.report(path.stem))
                 self._summaries[path.stem] = entry
-                result.append(self._summary(self._active[path.stem]) if path.stem in self._active else entry["summary"])
+                result.append(
+                    self._summary(self._active[path.stem])
+                    if path.stem in self._active
+                    else entry["summary"]
+                )
             return sorted(result, key=lambda r: r.get("updated", r["created"]), reverse=True)
 
-    def report_page(self, run_id, page=1, page_size=100, query="", status="", kind="", rule_set="", ids_only=False):
+    def report_page(
+        self,
+        run_id,
+        page=1,
+        page_size=100,
+        query="",
+        status="",
+        kind="",
+        rule_set="",
+        ids_only=False,
+    ):
         self.validate_run_id(run_id)
         page_size = max(1, min(page_size, 100))
         with self._report_lock:
@@ -211,22 +291,47 @@ class Store:
             else:
                 run = self._view_cache[2]
             needle = query.casefold()
-            items = [i for i in run["items"] if
-                     (not needle or needle in i["target"]["path"].casefold()) and
-                     (not status or i["status"] == status) and
-                     (not kind or i["target"]["kind"] == kind) and
-                     (not rule_set or any(h["set"] == rule_set for h in i["hits"]))]
+            items = [
+                i
+                for i in run["items"]
+                if (not needle or needle in i["target"]["path"].casefold())
+                and (not status or i["status"] == status)
+                and (not kind or i["target"]["kind"] == kind)
+                and (not rule_set or any(h["set"] == rule_set for h in i["hits"]))
+            ]
             if ids_only:
                 return {"ids": [i["id"] for i in items]}
             total = len(items)
             page = max(1, min(page, max(1, (total + page_size - 1) // page_size)))
             result = {k: v for k, v in run.items() if k not in {"items", "errors"}}
             # Internal signatures, fingerprints and requirements are needed only by workers.
-            fields = ("id", "target", "status", "hits", "remaining_hits", "remaining_assets", "conflicts", "actions", "results", "sync", "needs_recheck", "emby_mode")
-            result.update(items=[{k: i[k] for k in fields if k in i} for i in items[(page-1)*page_size:page*page_size]],
-                          page=page, page_size=page_size, total=total, item_count=len(run["items"]),
-                          statuses=sorted({i["status"] for i in run["items"]}),
-                          errors=run.get("errors", [])[:100], error_count=len(run.get("errors", [])))
+            fields = (
+                "id",
+                "target",
+                "status",
+                "hits",
+                "remaining_hits",
+                "remaining_assets",
+                "conflicts",
+                "actions",
+                "results",
+                "sync",
+                "needs_recheck",
+                "emby_mode",
+            )
+            result.update(
+                items=[
+                    {k: i[k] for k in fields if k in i}
+                    for i in items[(page - 1) * page_size : page * page_size]
+                ],
+                page=page,
+                page_size=page_size,
+                total=total,
+                item_count=len(run["items"]),
+                statuses=sorted({i["status"] for i in run["items"]}),
+                errors=run.get("errors", [])[:100],
+                error_count=len(run.get("errors", [])),
+            )
             return result
 
     def delete_reports(self, run_ids):
@@ -248,7 +353,13 @@ class Store:
     def prune_runs(self, days):
         cutoff = time.time() - days * 86400
         with self._report_lock:
-            self.delete_reports([path.stem for path in (self.directory / "runs").glob("*.json") if path.stat().st_mtime < cutoff])
+            self.delete_reports(
+                [
+                    path.stem
+                    for path in (self.directory / "runs").glob("*.json")
+                    if path.stat().st_mtime < cutoff
+                ]
+            )
 
     def commit(self, path, data, asset, config, run_id, expected, context=None):
         path = Path(path)
@@ -266,9 +377,17 @@ class Store:
             backup_id = uuid.uuid4().hex
             backup_path = directory / (backup_id + path.suffix)
             shutil.copy2(path, backup_path)
-            backup = {"id": backup_id, "path": str(path), "backup": str(backup_path), "asset": asset,
-                      "run_id": run_id, "created": time.time(), "after": hashlib.sha256(data).hexdigest(), "committed": False,
-                      "context": context or {}}
+            backup = {
+                "id": backup_id,
+                "path": str(path),
+                "backup": str(backup_path),
+                "asset": asset,
+                "run_id": run_id,
+                "created": time.time(),
+                "after": hashlib.sha256(data).hexdigest(),
+                "committed": False,
+                "context": context or {},
+            }
             index = self.read("backups", [])
             index.append(backup)
             self.write("backups", index)
@@ -298,7 +417,10 @@ class Store:
         self.write("backups", keep)
 
     def restore(self, backup_id, config, run_id):
-        entry = next((b for b in self.read("backups", []) if b["id"] == backup_id and b.get("committed")), None)
+        entry = next(
+            (b for b in self.read("backups", []) if b["id"] == backup_id and b.get("committed")),
+            None,
+        )
         if not entry:
             raise ValueError("备份不存在或未完成提交")
         path = Path(entry["path"])
@@ -308,5 +430,13 @@ class Store:
         current = path.read_bytes() if path.exists() else b""
         if hashlib.sha256(current).hexdigest() != entry["after"]:
             raise FileConflict("文件在备份后又被修改，不能直接恢复；请手动比较备份")
-        self.commit(path, Path(entry["backup"]).read_bytes(), entry["asset"], config.backup, run_id, fingerprint(path), entry["context"])
+        self.commit(
+            path,
+            Path(entry["backup"]).read_bytes(),
+            entry["asset"],
+            config.backup,
+            run_id,
+            fingerprint(path),
+            entry["context"],
+        )
         return entry
