@@ -159,6 +159,17 @@ class Store:
         return {"items": rows[(page - 1) * page_size:page * page_size], "total": len(rows),
                 "page": page, "page_size": page_size}
 
+    def delete_pending(self, keys):
+        """调用方持有 engine.lock；只移出队列，不改动历史记录或同步回执。"""
+        with self._report_lock:
+            entries = self.read_state("pending_sync")
+            deleted = [key for key in dict.fromkeys(keys) if key in entries]
+            for key in deleted:
+                del entries[key]
+            if deleted:
+                self.write_state("pending_sync", entries)
+            return {"deleted": deleted, "pending_count": len(entries)}
+
     @staticmethod
     def validate_run_id(run_id):
         if not run_id or any(c not in "0123456789abcdef" for c in run_id) or len(run_id) != 32:

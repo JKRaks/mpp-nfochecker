@@ -63,6 +63,13 @@ class DeleteRunsData(_Payload):
     deleted: list[str] = []
 
 
+class DeletePendingData(_Payload):
+    """实际移出的队列 key 与剩余任务数量。"""
+
+    deleted: list[str] = []
+    pending_count: int = 0
+
+
 class LiveData(_Payload):
     """启动任务后返回的实时状态快照。"""
 

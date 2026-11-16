@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.api.deps import get_current_active_manage_user
 from app.sdk.plugin import _PluginBase
 from app.sdk.logging import logger
-from .api_models import (BackupDetailData, DeleteRunsData, LiveData, OkData, PendingData, ReportData,
+from .api_models import (BackupDetailData, DeletePendingData, DeleteRunsData, LiveData, OkData, PendingData, ReportData,
                          SettingsData, StatusData, StopData)
 from .config import ASSETS, Config, defaults
 from .fields import NFO_FIELDS
@@ -48,11 +48,15 @@ class DeleteRuns(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=1000)
 
 
+class DeletePending(BaseModel):
+    keys: list[str] = Field(min_length=1, max_length=1000)
+
+
 class NfoCheck(_PluginBase):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "scraper.png"
-    plugin_version = "1.2.5"
+    plugin_version = "1.2.6"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""
@@ -205,6 +209,15 @@ class NfoCheck(_PluginBase):
     def api_pending(self, page: int = 1, page_size: int = 100, user=Depends(get_current_active_manage_user)):
         return self.engine.store.pending_page(page, page_size)
 
+    @lifecycle
+    def api_delete_pending(self, payload: DeletePending, user=Depends(get_current_active_manage_user)):
+        if not self.engine.lock.acquire(False):
+            raise HTTPException(409, "任务运行中，请结束后移出待同步任务")
+        try:
+            return self.engine.store.delete_pending(payload.keys)
+        finally:
+            self.engine.lock.release()
+
     def api_backup_detail(self, id: str, user=Depends(get_current_active_manage_user)):
         entry = next((b for b in self.engine.store.read("backups", []) if b.get("id") == id), None)
         if not entry:
@@ -246,6 +259,7 @@ class NfoCheck(_PluginBase):
             ("stop", self.api_stop, "POST", StopData),
             ("delete_runs", self.api_delete_runs, "POST", DeleteRunsData),
             ("pending", self.api_pending, "GET", PendingData),
+            ("delete_pending", self.api_delete_pending, "POST", DeletePendingData),
             ("backup_detail", self.api_backup_detail, "GET", BackupDetailData),
         ]
         return [{"path": "/" + name, "endpoint": endpoint, "methods": [method], "auth": "bear", "summary": name,

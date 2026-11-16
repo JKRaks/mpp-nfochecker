@@ -1,6 +1,7 @@
 import {computed, onMounted, onUnmounted, ref, shallowRef, watch} from 'vue'
 import type {InjectionKey, UnwrapNestedRefs} from 'vue'
-import type {Config, HostProps, NfoField, PendingPage, Report, RunSummary, Rule, RuleSet, TranslationInfo} from './types'
+import type {Config, HostProps, NfoField, Report, RunSummary, Rule, RuleSet, TranslationInfo} from './types'
+import {createPendingState} from './pendingState'
 import type {useDetail} from './detail/useDetail'
 
 // 元数据巡检的页面状态与操作。App.vue 创建一次，并通过 provide 交给各页签组件。
@@ -15,9 +16,12 @@ const translationMode = ref('normal')
 const languageOps = ['language_missing','language_mismatch','language_unknown']
 const usesTranslation = (rule:Rule) => ['translate','nfo_translate'].includes(rule.action) || rule.conditions.some(c=>languageOps.includes(c.op))
 const policyFields = (rule:Rule) => translation.value.policies.find(p=>p.id===rule.translation_policy)?.fields || Object.keys(translation.value.fields)
-const pendingCount = ref(0), pendingPage = shallowRef<PendingPage>(), pendingLoading = ref(false)
-let pendingRequest = 0
 const tab = ref('rules'), error = ref(''), notice = ref(''), saving = ref(false)
+const url = (path: string) => `plugin/${props.pluginId}/${path}`
+const pending = createPendingState(props.api,url,()=>tab.value==='pending')
+const {pendingCount,pendingPage,pendingLoading,pendingDeleting,pendingRevision,loadPending,cancelPendingLoad} = pending
+const savedConfig = ref('')
+const dirty = computed(()=>!!cfg.value && JSON.stringify(cfg.value)!==savedConfig.value)
 const live = ref({busy: false, run_id: '', error: ''})
 const runs = shallowRef<RunSummary[]>([]), report = shallowRef<Report>()
 const viewRunId = ref(''), recordLoading = ref(false), historySelected = ref<string[]>([]), deleteIds = ref<string[]>([]), deleting = ref(false)
@@ -39,12 +43,26 @@ const total = computed(() => report.value?.total || 0)
 const enabledSetCount = computed(() => cfg.value?.rule_sets.filter(s => s.enabled).length || 0)
 const ruleCount = computed(() => cfg.value?.rule_sets.reduce((n, s) => n + s.rules.length, 0) || 0)
 const lastRun = computed(() => runs.value[0])
+const configurationIssue = computed(()=>{
+  const sets=cfg.value?.rule_sets.filter(s=>s.enabled)||[]
+  if(!sets.length)return '请先新建或启用一个规则集'
+  for(const set of sets){
+    if(!set.roots.length)return `请为「${set.name}」填写检查目录`
+    if(!set.kinds.length)return `请为「${set.name}」选择媒体类型`
+    if(!set.rules.some(r=>r.enabled))return `请为「${set.name}」添加或启用规则`
+    for(const rule of set.rules.filter(r=>r.enabled)){
+      if(rule.category==='nfo'&&!rule.conditions.length)return `请为「${rule.name}」选择至少一个条件`
+      if(rule.category==='image'&&!rule.images.length)return `请为「${rule.name}」选择至少一种图片`
+    }
+  }
+  return ''
+})
 const statusText = computed(() => {
   if (!cfg.value) return '正在读取设置'
   if (live.value.busy) return '任务运行中，可在巡检结果中查看进度'
-  if (!cfg.value.enabled) return '插件未启用修复。可先试运行查看结果，确认后在设置中启用'
-  if (!enabledSetCount.value) return '还没有启用的规则集，请先在规则页添加'
-  return '准备就绪，可以试运行或按规则运行'
+  if (configurationIssue.value) return configurationIssue.value
+  if (!cfg.value.enabled) return '配置已就绪，可先试运行；开启修复后可按规则运行'
+  return '配置已就绪，建议先试运行查看命中结果'
 })
 const filters = () => ({query:query.value,status:statusFilter.value,kind:kindFilter.value,rule_set:ruleFilter.value})
 watch([query,statusFilter,kindFilter,ruleFilter],()=>{
@@ -57,18 +75,19 @@ watch(tab, value=>{
   if(value!=='results'){reportRequest++;recordLoading.value=false;clearTimeout(filterTimer)}
   if(value==='settings')guard(poll)
   if(value==='pending')guard(()=>loadPending(1))
-  else pendingRequest++
+  else cancelPendingLoad()
   if(value==='results' && viewRunId.value && !recordLoading.value)guard(()=>open(viewRunId.value,false))
 })
 const assetOptions = (set: RuleSet) => [...new Set(set.kinds.flatMap(k=>supported.value[k] || []))]
-const url = (path: string) => `plugin/${props.pluginId}/${path}`
 function message(e: unknown) {const v=e as {response?:{data?:{detail?:unknown}};message?:string}; return typeof v.response?.data?.detail === 'string' ? v.response.data.detail : JSON.stringify(v.response?.data?.detail || v.message || '请求失败')}
 async function guard(work:()=>Promise<void>) {error.value=''; try {await work()} catch(e) {error.value=message(e)}}
-async function load() {const data=await props.api.get<{config:Config;servers:string[];channels:{title:string;value:string}[];assets:Record<string,string[]>;nfo_fields:NfoField[];translation:TranslationInfo}>(url('settings'));cfg.value=data.config;servers.value=data.servers;channels.value=data.channels;supported.value=data.assets;nfoFields.value=data.nfo_fields||[];if(data.translation)translation.value=data.translation}
+async function load() {const data=await props.api.get<{config:Config;servers:string[];channels:{title:string;value:string}[];assets:Record<string,string[]>;nfo_fields:NfoField[];translation:TranslationInfo}>(url('settings'));cfg.value=data.config;savedConfig.value=JSON.stringify(data.config);servers.value=data.servers;channels.value=data.channels;supported.value=data.assets;nfoFields.value=data.nfo_fields||[];if(data.translation)translation.value=data.translation}
 async function poll() {
+  const revision=pendingRevision.value
   const data=await props.api.get<{live:typeof live.value;runs:RunSummary[];pending_count:number;backups?:typeof backups.value}>(url('status'),{params:{include_backups:tab.value==='settings'}})
-  live.value=data.live;runs.value=data.runs;pendingCount.value=data.pending_count||0
-  if(tab.value==='pending' && !pendingLoading.value)await loadPending(pendingPage.value?.page||1)
+  live.value=data.live;runs.value=data.runs
+  if(revision===pendingRevision.value && !pendingDeleting.value)pendingCount.value=data.pending_count||0
+  if(tab.value==='pending' && !pendingLoading.value && !pendingDeleting.value)await loadPending(pendingPage.value?.page||1)
   if(data.backups)backups.value=data.backups
   historyPage.value=Math.min(historyPage.value,Math.max(1,Math.ceil(runs.value.length/historySize)))
   historySelected.value=historySelected.value.filter(id=>runs.value.some(r=>r.id===id))
@@ -108,18 +127,15 @@ async function deleteRuns() {
     await poll()
   } finally {deleting.value=false}
 }
-async function save() {if(!cfg.value)return;saving.value=true;try{await props.api.post(url('settings'),cfg.value);notice.value='设置已保存'}finally{saving.value=false}}
+async function save() {if(!cfg.value||saving.value)return;saving.value=true;try{const snapshot=JSON.stringify(cfg.value);await props.api.post(url('settings'),JSON.parse(snapshot));savedConfig.value=snapshot;notice.value='配置已保存'}finally{saving.value=false}}
 async function start(operation:string, extra:Record<string,unknown>={}) {await props.api.post(url('start'),{operation,run_id:['run','inspect','restore','refresh_pending'].includes(operation)?null:report.value?.id,...extra});selected.value=[];if(['run','inspect','restore','refresh_pending'].includes(operation)){followNewRun=true;viewRunId.value='';report.value=undefined}tab.value='results';await poll()}
-async function loadPending(page:number) {
-  const request=++pendingRequest
-  pendingLoading.value=true
-  try {
-    const data=await props.api.get<PendingPage>(url('pending'),{params:{page,page_size:100}})
-    if(request===pendingRequest)pendingPage.value=data
-  } finally {pendingLoading.value=false}
+async function removePending() {
+  const count=await pending.deletePending()
+  notice.value=`已移出 ${count} 项待同步任务`
+  if(tab.value==='pending')await loadPending(pendingPage.value?.page||1)
 }
 function showBackup(id:string) {return viewer.show('NFO 备份详情',()=>props.api.get(url('backup_detail'),{params:{id}}))}
-async function launch(dry:boolean) {await save();await start('run',{dry_run:dry,run_id:null})}
+async function launch(dry:boolean) {if(configurationIssue.value)throw new Error(configurationIssue.value);await save();await start('run',{dry_run:dry,run_id:null})}
 async function applyTranslation() {const mode=translationMode.value;await start('repair',{ids:[...selected.value],retry:true,translation_overwrite:mode==='overwrite',translation_force:mode==='force'});translationMode.value='normal'}
 function lines(value:string) {return value.split('\n').map(v=>v.trim()).filter(Boolean)}
 function setLines(object:RuleSet, key:'roots'|'excludes', event:Event) {object[key]=lines((event.target as HTMLTextAreaElement).value)}
@@ -132,10 +148,10 @@ function stamp(time:number) {return new Date(time*1000).toLocaleString()}
 let timer:ReturnType<typeof setInterval>
 let polling=false
 onMounted(()=>{guard(async()=>{await load();await poll()});timer=setInterval(async()=>{if(polling)return;polling=true;try{await guard(poll)}finally{polling=false}},4000)})
-onUnmounted(()=>{clearInterval(timer);clearTimeout(filterTimer);reportRequest++;pendingRequest++})
+onUnmounted(()=>{clearInterval(timer);clearTimeout(filterTimer);reportRequest++;cancelPendingLoad()})
   return {
     cfg, servers, channels, supported, nfoFields, translation, translationMode, languageOps, usesTranslation, policyFields,
-    pendingCount, pendingPage, pendingLoading, tab, error, notice, saving, live, runs, report, viewRunId, recordLoading,
+    ...pending, removePending, dirty, configurationIssue, tab, error, notice, saving, live, runs, report, viewRunId, recordLoading,
     historySelected, deleteIds, deleting, historyPage, historySize, historyRuns, backups, selected, query, statusFilter,
     kindFilter, ruleFilter, page, visible, total, labels, exitLabels, ops, actions, assetOptions, url, guard, load, poll,
     open, changePage, selectAllResults, deleteRuns, save, start, loadPending, showBackup, launch, applyTranslation, lines,
