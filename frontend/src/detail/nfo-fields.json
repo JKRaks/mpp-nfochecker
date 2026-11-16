@@ -1,0 +1,773 @@
+[
+  {
+    "value": "title",
+    "label": "标题(title)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "originaltitle",
+    "label": "原始标题(originaltitle)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "单集在 Kodi 中继承整剧信息；MoviePilot 部分来源也会写入。"
+  },
+  {
+    "value": "sorttitle",
+    "label": "排序标题(sorttitle)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "plot",
+    "label": "剧情简介(plot)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "outline",
+    "label": "简短摘要(outline)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "Kodi 主要用于电影；MoviePilot 也会在剧、季、单集中写入。"
+  },
+  {
+    "value": "tagline",
+    "label": "宣传语(tagline)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": "剧集宣传语为 Kodi v22 新增字段。"
+  },
+  {
+    "value": "premiered",
+    "label": "首映日期(premiered)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "单集在 Kodi 中继承整剧日期；单集自身播出日期使用 aired。"
+  },
+  {
+    "value": "year",
+    "label": "年份(year)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "MoviePilot 兼容字段；Kodi v20 起使用 premiered。"
+  },
+  {
+    "value": "runtime",
+    "label": "时长（分钟）(runtime)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": "Kodi 用于电影和单集；MoviePilot 也可能写入整剧。"
+  },
+  {
+    "value": "mpaa",
+    "label": "内容分级(mpaa)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": "单集在 Kodi 中继承整剧信息。"
+  },
+  {
+    "value": "genre",
+    "label": "类型(genre)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "可重复；单集在 Kodi 中继承整剧信息。"
+  },
+  {
+    "value": "country",
+    "label": "制作国家或地区(country)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": "Kodi 电影字段；MoviePilot 也可能写入整剧。"
+  },
+  {
+    "value": "studio",
+    "label": "制作公司(studio)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "tag",
+    "label": "标签(tag)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "trailer",
+    "label": "预告片地址(trailer)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "originallanguage",
+    "label": "原始语言(originallanguage)",
+    "group": "基础信息",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": "Kodi v22 新增，旧刮削器可能不生成。"
+  },
+  {
+    "value": "uniqueid",
+    "label": "媒体来源 ID(uniqueid)",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "检查任一来源 ID；限定来源请使用下方带 type 的选项。"
+  },
+  {
+    "value": "uniqueid[@type='tmdb']",
+    "label": "TMDB 来源 ID(uniqueid[@type='tmdb'])",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "uniqueid[@type='imdb']",
+    "label": "IMDb 来源 ID(uniqueid[@type='imdb'])",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "uniqueid[@type='tvdb']",
+    "label": "TVDB 来源 ID(uniqueid[@type='tvdb'])",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "tmdbid",
+    "label": "TMDB 兼容 ID(tmdbid)",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": "MoviePilot 写入的兼容字段，与 uniqueid 分别检查。"
+  },
+  {
+    "value": "imdbid",
+    "label": "IMDb 兼容 ID(imdbid)",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": "MoviePilot 写入的兼容字段，与 uniqueid 分别检查。"
+  },
+  {
+    "value": "tvdbid",
+    "label": "TVDB 兼容 ID(tvdbid)",
+    "group": "来源标识",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": "MoviePilot 写入的兼容字段，与 uniqueid 分别检查。"
+  },
+  {
+    "value": "actor/name",
+    "label": "演员姓名(actor/name)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "actor/role",
+    "label": "饰演角色(actor/role)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "actor/thumb",
+    "label": "演员头像地址(actor/thumb)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "actor/order",
+    "label": "演员排序(actor/order)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "director",
+    "label": "导演(director)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "credits",
+    "label": "编剧(credits)",
+    "group": "演职员",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "ratings/rating/value",
+    "label": "评分值(ratings/rating/value)",
+    "group": "评分",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": "多来源评分结构；MoviePilot 常用单层 rating 字段。"
+  },
+  {
+    "value": "ratings/rating/votes",
+    "label": "评分人数(ratings/rating/votes)",
+    "group": "评分",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "rating",
+    "label": "评分（兼容）(rating)",
+    "group": "评分",
+    "kinds": [
+      "movie",
+      "tv",
+      "season",
+      "episode"
+    ],
+    "note": "MoviePilot 当前生成的单层评分字段。"
+  },
+  {
+    "value": "userrating",
+    "label": "个人评分(userrating)",
+    "group": "评分",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "top250",
+    "label": "IMDb 前 250 排名(top250)",
+    "group": "评分",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": "未上榜作品通常没有该字段，不建议作为通用完整性条件。"
+  },
+  {
+    "value": "showtitle",
+    "label": "剧名(showtitle)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "season",
+    "label": "季号或总季数(season)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv",
+      "episode"
+    ],
+    "note": "单集为季号；整剧为季数，MoviePilot 可能写入 -1。season.nfo 使用 seasonnumber。"
+  },
+  {
+    "value": "episode",
+    "label": "集号或总集数(episode)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv",
+      "episode"
+    ],
+    "note": "单集为集号；整剧为集数，MoviePilot 可能写入 -1。"
+  },
+  {
+    "value": "seasonnumber",
+    "label": "季号(seasonnumber)",
+    "group": "剧集与合集",
+    "kinds": [
+      "season"
+    ],
+    "note": "MoviePilot season.nfo 字段；不是 Kodi 整剧或单集的 season 字段。"
+  },
+  {
+    "value": "aired",
+    "label": "单集首播日期(aired)",
+    "group": "剧集与合集",
+    "kinds": [
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "releasedate",
+    "label": "季发行日期（兼容）(releasedate)",
+    "group": "剧集与合集",
+    "kinds": [
+      "season"
+    ],
+    "note": "MoviePilot 的 TMDB 季 NFO 字段。"
+  },
+  {
+    "value": "displayseason",
+    "label": "特别篇显示季号(displayseason)",
+    "group": "剧集与合集",
+    "kinds": [
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "displayepisode",
+    "label": "特别篇显示集号(displayepisode)",
+    "group": "剧集与合集",
+    "kinds": [
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "episodeguide",
+    "label": "剧集索引(episodeguide)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "status",
+    "label": "播出状态(status)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "namedseason",
+    "label": "季名称(namedseason)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "seasonplot",
+    "label": "季简介(seasonplot)",
+    "group": "剧集与合集",
+    "kinds": [
+      "tv"
+    ],
+    "note": "Kodi v22 新增，位于 tvshow.nfo 中。"
+  },
+  {
+    "value": "set/name",
+    "label": "电影合集名称(set/name)",
+    "group": "剧集与合集",
+    "kinds": [
+      "movie"
+    ],
+    "note": ""
+  },
+  {
+    "value": "set/overview",
+    "label": "电影合集简介(set/overview)",
+    "group": "剧集与合集",
+    "kinds": [
+      "movie"
+    ],
+    "note": ""
+  },
+  {
+    "value": "showlink",
+    "label": "关联电视剧(showlink)",
+    "group": "剧集与合集",
+    "kinds": [
+      "movie"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb",
+    "label": "图片地址(thumb)",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='poster']",
+    "label": "主图地址(thumb[@aspect='poster'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='clearlogo']",
+    "label": "徽标地址(thumb[@aspect='clearlogo'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='banner']",
+    "label": "横幅地址(thumb[@aspect='banner'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='landscape']",
+    "label": "横版图地址(thumb[@aspect='landscape'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='clearart']",
+    "label": "透明艺术图地址(thumb[@aspect='clearart'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='discart']",
+    "label": "光盘图地址(thumb[@aspect='discart'])",
+    "group": "图片引用",
+    "kinds": [
+      "movie"
+    ],
+    "note": ""
+  },
+  {
+    "value": "thumb[@aspect='thumb']",
+    "label": "单集缩略图地址(thumb[@aspect='thumb'])",
+    "group": "图片引用",
+    "kinds": [
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fanart/thumb",
+    "label": "背景图地址(fanart/thumb)",
+    "group": "图片引用",
+    "kinds": [
+      "movie",
+      "tv"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/codec",
+    "label": "视频编码(fileinfo/streamdetails/video/codec)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/aspect",
+    "label": "画面比例(fileinfo/streamdetails/video/aspect)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/width",
+    "label": "视频宽度(fileinfo/streamdetails/video/width)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/height",
+    "label": "视频高度(fileinfo/streamdetails/video/height)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/durationinseconds",
+    "label": "视频时长（秒）(fileinfo/streamdetails/video/durationinseconds)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/stereomode",
+    "label": "立体视频模式(fileinfo/streamdetails/video/stereomode)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/video/hdrtype",
+    "label": "HDR 类型(fileinfo/streamdetails/video/hdrtype)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": "SDR 视频允许为空，不建议作为通用完整性条件。"
+  },
+  {
+    "value": "fileinfo/streamdetails/audio/codec",
+    "label": "音频编码(fileinfo/streamdetails/audio/codec)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/audio/language",
+    "label": "音轨语言(fileinfo/streamdetails/audio/language)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/audio/channels",
+    "label": "音轨声道数(fileinfo/streamdetails/audio/channels)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "fileinfo/streamdetails/subtitle/language",
+    "label": "字幕语言(fileinfo/streamdetails/subtitle/language)",
+    "group": "媒体流信息",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "playcount",
+    "label": "播放次数(playcount)",
+    "group": "播放记录",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "lastplayed",
+    "label": "上次播放时间(lastplayed)",
+    "group": "播放记录",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "resume/position",
+    "label": "续播位置(resume/position)",
+    "group": "播放记录",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "resume/total",
+    "label": "续播总时长(resume/total)",
+    "group": "播放记录",
+    "kinds": [
+      "movie",
+      "episode"
+    ],
+    "note": ""
+  },
+  {
+    "value": "dateadded",
+    "label": "入库时间(dateadded)",
+    "group": "播放记录",
+    "kinds": [
+      "movie",
+      "tv",
+      "episode"
+    ],
+    "note": ""
+  }
+]

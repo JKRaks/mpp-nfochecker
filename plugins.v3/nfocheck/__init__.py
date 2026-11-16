@@ -1,6 +1,8 @@
 """MoviePilot V3 元数据巡检 plugin."""
 import copy
 import threading
+from pathlib import Path
+import xml.etree.ElementTree as ET
 from functools import wraps
 from typing import Literal
 from fastapi import Depends, HTTPException
@@ -15,6 +17,7 @@ from .emby import EmbyGateway
 from .engine import Engine
 from .errors import safe_message
 from .translation import TranslationBridge
+from .core import parse_nfo
 
 
 def lifecycle(method):
@@ -47,7 +50,7 @@ class NfoCheck(_PluginBase):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "scraper.png"
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.4"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""
@@ -200,6 +203,32 @@ class NfoCheck(_PluginBase):
     def api_pending(self, page: int = 1, page_size: int = 100, user=Depends(get_current_active_manage_user)):
         return self.engine.store.pending_page(page, page_size)
 
+    def api_backup_detail(self, id: str, user=Depends(get_current_active_manage_user)):
+        entry = next((b for b in self.engine.store.read("backups", []) if b.get("id") == id), None)
+        if not entry:
+            raise HTTPException(404, "备份记录不存在或已清理")
+        if entry.get("asset") != "nfo":
+            raise HTTPException(422, "此入口仅查看 NFO 备份")
+        path = Path(entry["backup"])
+        try:
+            if path.is_symlink() or not path.is_file():
+                raise HTTPException(404, "备份文件不存在或不可读取")
+            with path.open("rb") as stream:
+                raw = stream.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise HTTPException(413, "备份超过 2 MiB 预览上限，请在备份目录查看")
+            try:
+                nfo = raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                nfo = ET.tostring(parse_nfo(raw), encoding="unicode")
+        except FileNotFoundError:
+            raise HTTPException(404, "备份文件已被清理") from None
+        except (ValueError, ET.ParseError):
+            raise HTTPException(422, "备份编码或 XML 无法解析") from None
+        except OSError:
+            raise HTTPException(503, "暂时无法读取备份文件") from None
+        return {"backup": {k: entry.get(k) for k in ("id", "path", "created", "committed", "asset")}, "nfo": nfo}
+
     def api_stop(self, user=Depends(get_current_active_manage_user)):
         self.engine.stop.set()
         return {"ok": True, "message": "将在当前文件操作结束后停止"}
@@ -210,7 +239,8 @@ class NfoCheck(_PluginBase):
                     ("settings", self.api_settings, "GET"), ("settings", self.api_save, "POST"),
                     ("status", self.api_status, "GET"), ("report", self.api_report, "GET"),
                     ("start", self.api_start, "POST"), ("stop", self.api_stop, "POST"),
-                    ("delete_runs", self.api_delete_runs, "POST"), ("pending", self.api_pending, "GET")]]
+                    ("delete_runs", self.api_delete_runs, "POST"), ("pending", self.api_pending, "GET"),
+                    ("backup_detail", self.api_backup_detail, "GET")]]
 
     def get_actions(self):
         return [{"id": "inspect", "name": "巡检 NFO 和图片", "func": self.workflow_inspect,
