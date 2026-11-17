@@ -1,0 +1,163 @@
+name: Build plugin package
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  PLUGIN_ID: NfoCheck
+  PLUGIN_DIRECTORY: nfocheck
+  PYTHONDONTWRITEBYTECODE: '1'
+  PYTHONUTF8: '1'
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      artifact: ${{ steps.metadata.outputs.artifact }}
+      prerelease: ${{ steps.metadata.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Check versions and Python syntax
+        id: metadata
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import os
+          from pathlib import Path
+
+          plugin_id = os.environ["PLUGIN_ID"]
+          plugin = Path("plugins.v3") / os.environ["PLUGIN_DIRECTORY"]
+          manifest = json.loads(Path("package.v3.json").read_text(encoding="utf-8"))[plugin_id]
+          version = manifest["version"]
+          frontend = json.loads(Path("frontend/package.json").read_text(encoding="utf-8"))
+          lock = json.loads(Path("frontend/package-lock.json").read_text(encoding="utf-8"))
+          tree = ast.parse((plugin / "__init__.py").read_text(encoding="utf-8"))
+          plugin_class = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == plugin_id)
+          backend_version = next(
+              ast.literal_eval(node.value)
+              for node in plugin_class.body
+              if isinstance(node, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id == "plugin_version" for target in node.targets)
+          )
+          if any(value != version for value in (frontend["version"], lock["version"], lock["packages"][""]["version"], backend_version)):
+              raise SystemExit("Plugin, frontend and lockfile versions must match")
+          if os.environ["GITHUB_REF_TYPE"] == "tag" and os.environ["GITHUB_REF_NAME"] != f"v{version}":
+              raise SystemExit(f"Release tag must be v{version}")
+          for source in [*plugin.rglob("*.py"), Path("scripts/package.py")]:
+              compile(source.read_text(encoding="utf-8"), str(source), "exec")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"version={version}\nartifact={plugin_id}-{version}\n")
+              output.write(f"prerelease={str(not manifest.get('release', True)).lower()}\n")
+          PY
+
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install declared npm version
+        working-directory: frontend
+        run: |
+          npm install --global "$(node -p "require('./package.json').packageManager")"
+          node --version
+          npm --version
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Typecheck and build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build installation package
+        run: python scripts/package.py
+
+      - name: Verify installation package
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          directory = os.environ["PLUGIN_DIRECTORY"]
+          package = Path("artifacts") / f"{os.environ['PLUGIN_ID']}-{os.environ['VERSION']}.zip"
+          with ZipFile(package) as archive:
+              if archive.testzip() is not None:
+                  raise SystemExit("ZIP integrity check failed")
+              required = {"__init__.py", "requirements.txt", "icon.png", "README.md", "dist/assets/remoteEntry.js", "dist/assets/build-meta.json"}
+              missing = {f"{directory}/{name}" for name in required} - set(archive.namelist())
+              if missing:
+                  raise SystemExit(f"Missing package files: {sorted(missing)}")
+          PY
+          (cd artifacts && sha256sum --check *.zip.sha256)
+
+      - name: Upload installation package
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ steps.metadata.outputs.artifact }}
+          path: |
+            artifacts/*.zip
+            artifacts/*.zip.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  release:
+    name: Publish release package
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ${{ needs.build.outputs.artifact }}
+          path: artifacts
+
+      - name: Publish ZIP and SHA256
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/*.zip artifacts/*.zip.sha256 --clobber
+          else
+            flags=()
+            if [[ "$PRERELEASE" == "true" ]]; then
+              flags+=(--prerelease)
+            fi
+            gh release create "$TAG" artifacts/*.zip artifacts/*.zip.sha256 \
+              --verify-tag --title "$PLUGIN_ID $VERSION" --generate-notes "${flags[@]}"
+          fi
