@@ -1,4 +1,4 @@
-# NfoCheck 1.2.6
+# NfoCheck 1.2.8
 
 MoviePilot V3 插件，宿主接口基线 3.2.5。
 
@@ -9,20 +9,6 @@ MoviePilot V3 插件，宿主接口基线 3.2.5。
 在 MoviePilot 插件市场添加仓库 `https://github.com/JKRaks/mpp-nfochecker`，然后安装 NfoCheck。仓库已包含对应版本的完整前端产物。
 
 翻译服务的 API Key 需要自行配置。仓库不包含个人设置或密钥。
-
-## 构建
-
-环境：Node 26.13.0，npm 11.20.0。
-
-```bash
-cd frontend
-npm ci
-npm run build
-cd ..
-python3 scripts/package.py
-```
-
-构建只生成本项目的插件包。
 
 ## 页面与队列管理
 

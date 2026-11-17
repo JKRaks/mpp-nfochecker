@@ -23,11 +23,11 @@ def build(name):
     output.parent.mkdir(exist_ok=True)
     files = {f"{directory}/{p.relative_to(plugin)}": p for p in plugin.rglob("*.py") if "__pycache__" not in p.parts}
     files[f"{directory}/requirements.txt"] = plugin / "requirements.txt"
+    files[f"{directory}/icon.png"] = plugin / "icon.png"
     files.update({f"{directory}/{p.relative_to(plugin)}": p for p in (plugin / "dist/assets").rglob("*") if p.is_file()})
-    for filename in ("README.md", "PROVIDERS.md"):
-        path = plugin / filename
-        if not path.exists(): path = ROOT / filename
-        if path.is_file(): files[f"{directory}/{filename}"] = path
+    readme = plugin / "README.md"
+    if not readme.exists(): readme = ROOT / "README.md"
+    if readme.is_file(): files[f"{directory}/README.md"] = readme
     for path in (ROOT / "examples").glob("*.json"):
         files[f"{directory}/examples/{path.name}"] = path
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
