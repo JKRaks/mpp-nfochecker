@@ -56,7 +56,7 @@ class NfoCheck(_PluginBase):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "https://raw.githubusercontent.com/JKRaks/mpp-nfochecker/main/plugins.v3/nfocheck/icon.png"
-    plugin_version = "1.2.9"
+    plugin_version = "1.2.10"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""

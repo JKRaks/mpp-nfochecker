@@ -28,6 +28,8 @@ def build(name):
     readme = plugin / "README.md"
     if not readme.exists(): readme = ROOT / "README.md"
     if readme.is_file(): files[f"{directory}/README.md"] = readme
+    if readme == ROOT / "README.md":
+        files.update({f"{directory}/assets/{p.name}": p for p in (ROOT / "assets").glob("*.png")})
     for path in (ROOT / "examples").glob("*.json"):
         files[f"{directory}/examples/{path.name}"] = path
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
