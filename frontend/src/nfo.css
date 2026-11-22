@@ -133,7 +133,70 @@
 .nfo-app .settings-body>.field-label{margin-top:14px}
 .nfo-app .server-settings,.nfo-app .backup-row{padding:14px 0;margin-top:12px;border-top:1px solid var(--nfo-border)}
 .nfo-app .backup-row>.row{margin-top:12px}
-.nfo-app .result-actions{border:0;padding:0;min-width:0}
+/* 巡检结果页顶部 */
+.nfo-app .result-controls {
+  container-type: inline-size;
+  --result-accent: rgb(var(--v-theme-primary, 82, 105, 205));
+  margin: 16px 0;
+}
+.nfo-app .result-filters {
+  padding: 16px;
+  border: 1px solid var(--nfo-border);
+  border-radius: 8px;
+  background: rgba(var(--v-theme-on-surface, 69, 84, 113), .07);
+}
+.nfo-app .result-filters h3,
+.nfo-app .result-selection-title {display: flex; align-items: center; gap: 8px}
+.nfo-app .result-filter-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.nfo-app .result-group {border-top: 1px solid var(--nfo-border); margin-top: 16px; padding-top: 16px}
+.nfo-app .result-selection, .nfo-app .result-run, .nfo-app .result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.nfo-app .result-selection-title {margin-inline-end: auto}
+.nfo-app .result-actions {margin: 0; padding: 0; border: 0; min-width: 0}
+.nfo-app .selection-links {gap: 2px}
+.nfo-app .selection-links .text-button {color: var(--result-accent)}
+.nfo-app button.repair-selected {
+  padding-inline: 18px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-primary, 255, 255, 255));
+  background: var(--result-accent);
+  border-color: var(--result-accent);
+}
+.nfo-app .result-more {
+  margin-top: 12px;
+  border: 1px solid var(--nfo-border);
+  border-radius: 8px;
+}
+.nfo-app .result-more summary {padding: 10px 14px; font-weight: 500}
+.nfo-app .result-more .result-actions {margin: 0 14px 14px}
+.nfo-app .result-translation label {max-width: 100%}
+.nfo-app .result-translation select {flex: 1}
+.nfo-app .result-translation p {flex-basis: 100%; margin: 0}
+.nfo-app .result-run {gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--nfo-border)}
+@container (max-width: 680px) {
+  .nfo-app .result-filter-fields {grid-template-columns: repeat(2, minmax(0, 1fr))}
+  .nfo-app .filter-path, .nfo-app .filter-ruleset {grid-column: 1 / -1}
+  .nfo-app .result-selection {align-items: stretch; flex-direction: column}
+  .nfo-app .repair-selected {width: 100%}
+  .nfo-app .result-translation label {width: 100%; flex-direction: column; align-items: stretch}
+  .nfo-app .result-run {display: block}
+  .nfo-app .result-run .result-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    margin-top: 10px;
+  }
+  .nfo-app .result-run button:last-child {grid-column: 1 / -1}
+}
 .nfo-app .table-wrap{overflow-x:auto}
 .nfo-app table{width:100%;border-collapse:collapse;text-align:left}
 .nfo-app th,.nfo-app td{padding:12px;border-bottom:1px solid var(--nfo-border);vertical-align:top}
