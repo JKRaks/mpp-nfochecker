@@ -1,1 +1,0 @@
-import{a as _,b as a,c as t,_ as m}from"./nfo.css_vue_type_style_index_0_src_true_lang-CyplxtAX.js";const f=_({__name:"Config",props:{api:{},pluginId:{}},emits:["close"],setup(i,{emit:e}){const s=e;return(o,n)=>(a(),t(m,{"config-view":"",api:i.api,"plugin-id":i.pluginId,onClose:n[0]||(n[0]=p=>s("close"))},null,8,["api","plugin-id"]))}});export{f as default};
