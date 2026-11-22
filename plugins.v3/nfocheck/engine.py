@@ -91,7 +91,10 @@ class Engine:
             elif operation in {"repair", "resume"}:
                 if operation == "resume" and self.store.report(params["run_id"])["dry_run"]:
                     raise ValueError("试运行记录不能继续执行；请先执行修复或正式运行")
-                report = self.repair(params["run_id"], params.get("ids"), params.get("retry", False), operation == "resume")
+                report = self.repair(
+                    params["run_id"], params.get("ids"), params.get("retry", False),
+                    resume=operation == "resume", sync_selected=operation == "repair" and params.get("sync", False),
+                )
                 if operation == "resume" and not self.stop.is_set():
                     report = self.refresh(report["id"])
             elif operation == "refresh":
@@ -410,7 +413,10 @@ class Engine:
         current["status"] = item_status(current)
         return current
 
-    def repair(self, run_id, ids=None, retry=False, resume=False):
+    def repair(self, run_id, ids=None, retry=False, resume=False, sync_selected=False):
+        if sync_selected and not ids:
+            raise ValueError("修复并同步需要明确选中的条目")
+        queued_keys = set()
         report = self.store.report(run_id)
         self.live["run_id"] = run_id
         config = self.scoped(report["set_ids"])
@@ -523,7 +529,9 @@ class Engine:
                         "resume": {key: copy.deepcopy(current.get(key)) for key in ("remaining_assets", "asset_signatures", "completed_assets", "translation", "translation_conflict")}}
                     self.store.write_state("attempts", attempts)
                     if result["status"] == "repaired":
-                        self.queue_sync(current, report, config)
+                        keys = self.queue_sync(current, report, config)
+                        if sync_selected:
+                            queued_keys.update(keys)
                     current["stable"] = True  # Only our confirmed commits bypass the current round's stability delay.
                     current["status"] = item_status(current)
                     self.save(report, index)
@@ -539,14 +547,21 @@ class Engine:
                 self.save(report, index)
         self.store.write("cache", inspector.cache)
         self.store.prune_backups(config.backup)
+        if queued_keys and not self.stop.is_set():
+            report.update(phase="syncing", status="syncing")
+            self.save(report, force=True)
+            pending = self.store.read_state("pending_sync")
+            entries = ((key, entry) for key, entry in pending.items() if key in queued_keys)
+            self.sync_pending_entries(report, entries)
         return self.done(report, "batch_limit" if limited else "completed")
 
     def queue_sync(self, item, report, config, force=False):
+        queued_keys = set()
         if item["emby_mode"] == "off" and not force:
-            return
+            return queued_keys
         results = {a: copy.deepcopy(v) for a, v in item["results"].items() if v.get("status") == "repaired" and v.get("version")}
         if not results and item["emby_mode"] != "compare":
-            return
+            return queued_keys
         pending = self.store.read_state("pending_sync")
         receipts = self.store.read_state("sync_receipts")
         servers = [s.name for s in config.emby_servers] or [""]
@@ -576,6 +591,8 @@ class Engine:
                 item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [receipt["sync"]]
                 pending.pop(key, None)
                 continue
+            if server:
+                queued_keys.add(key)
             if old.get("version") == version:
                 item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [old["sync"]]
                 continue
@@ -589,6 +606,7 @@ class Engine:
             item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [sync]
         item["status"] = item_status(item)
         self.store.write_state("pending_sync", pending)
+        return queued_keys
 
     def migrate_pending(self):
         pending = self.store.read_state("pending_sync")
@@ -702,14 +720,17 @@ class Engine:
                 if servers:
                     pending.pop(pending_key)
         self.store.write_state("pending_sync", pending)
+        entries = ((key, entry) for key, entry in pending.items()
+                   if allowed is None or entry.get("target_id", key) in allowed)
+        self.sync_pending_entries(report, entries)
+
+    def sync_pending_entries(self, report, entries):
         gateways, inspectors = {}, {}
         indexes = {item["id"]: i for i, item in enumerate(report["items"])}
-        for key, entry in list(pending.items()):
+        for key, entry in entries:
             if self.stop.is_set():
                 break
             target_id = entry.get("target_id", key)
-            if allowed is not None and target_id not in allowed:
-                continue
             try:
                 sync = self.sync_entry(entry, gateways, inspectors)
             except TaskStopped:
