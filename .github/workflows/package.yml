@@ -13,7 +13,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PLUGIN_ID: NfoCheck
@@ -131,10 +131,16 @@ jobs:
 
   release:
     name: Publish release package
-    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' ||
+       (github.ref_type == 'tag' && startsWith(github.ref_name, 'v')))
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: release-${{ needs.build.outputs.version }}
+      cancel-in-progress: false
     permissions:
       contents: write
     steps:
@@ -147,17 +153,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: v${{ needs.build.outputs.version }}
           VERSION: ${{ needs.build.outputs.version }}
           PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" artifacts/*.zip artifacts/*.zip.sha256 --clobber
+          draft=""
+          if draft="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            if [[ "$draft" == "false" ]]; then
+              echo "$TAG has already been published. Increase the plugin version for a new release." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+
+          tag_object="$(gh api "repos/$GH_REPO/git/matching-refs/tags/$TAG" \
+            --jq '.[] | select(.ref == ("refs/tags/" + env.TAG)) | .object.sha')"
+          if [[ -n "$tag_object" ]]; then
+            tagged_commit="$(gh api "repos/$GH_REPO/commits/$TAG" --jq .sha)"
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "::error::$TAG points to a different commit. Run the workflow on that tag or increase the plugin version."
+              exit 1
+            fi
+          fi
+
+          if [[ "$draft" == "true" ]]; then
+            target="$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)"
+            if [[ -z "$tag_object" && "$target" != "$GITHUB_SHA" ]]; then
+              echo "::error::The existing draft targets a different commit."
+              exit 1
+            fi
           else
             flags=()
             if [[ "$PRERELEASE" == "true" ]]; then
               flags+=(--prerelease)
             fi
-            gh release create "$TAG" artifacts/*.zip artifacts/*.zip.sha256 \
-              --verify-tag --title "$PLUGIN_ID $VERSION" --generate-notes "${flags[@]}"
+            gh release create "$TAG" --target "$GITHUB_SHA" --draft \
+              --title "$PLUGIN_ID $VERSION" --generate-notes "${flags[@]}"
           fi
+          gh release upload "$TAG" artifacts/*.zip artifacts/*.zip.sha256 --clobber
+          gh release edit "$TAG" --draft=false --prerelease="$PRERELEASE"
+          echo "Published [$TAG](https://github.com/$GH_REPO/releases/tag/$TAG)." >> "$GITHUB_STEP_SUMMARY"

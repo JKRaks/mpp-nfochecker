@@ -135,4 +135,6 @@ MoviePilot 与 Emby 使用不同媒体路径时，在“媒体库与路径映射
 
 版本安装包和 SHA256 校验文件见 [Releases](https://github.com/JKRaks/mpp-nfochecker/releases)。
 
+推送或合并到 `main` 后，构建成功会按插件版本自动创建标签并发布 Release。同版本已发布时跳过发布，发布新版前需更新插件版本号。
+
 最新构建见 [Actions](https://github.com/JKRaks/mpp-nfochecker/actions/workflows/package.yml)：进入成功的运行记录，从 Artifacts 下载。构建附件保留 30 天。
