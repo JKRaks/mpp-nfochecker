@@ -16,6 +16,7 @@ from .core import (Inspector, ROOT_TAGS, Target, applicable, digest, fingerprint
                    image_info, iter_discover, parse_nfo, reclassify, within)
 from .errors import (CandidateRejected, FileConflict, SourceUnavailable, StorageError,
                      TaskStopped, failure, safe_message)
+from .manual import ManualProtection, preserve_manual_nfo
 from .state import SCHEMA_VERSION, SYNC_DONE, contribution, finish, item_status, summary, sync_for_server
 from .store import Store
 from .translation import TranslationBridge
@@ -101,6 +102,14 @@ class Engine:
                 report = self.refresh(params["run_id"])
             elif operation == "refresh_pending":
                 report = self.refresh_pending()
+            elif operation == "sync_manual":
+                report = self.store.report(params["run_id"])
+                reason = "batch_limit" if report.get("exit_reason") == "batch_limit" else "completed"
+                report.update(phase="syncing", status="syncing", outcome="running")
+                self.save(report, force=True)
+                pending = self.store.read_state("pending_sync")
+                self.sync_pending_entries(report, ((key, pending[key]) for key in params["keys"] if key in pending))
+                report = self.done(report, reason)
             elif operation == "restore":
                 report = self.restore(params["backup_id"], params.get("sync", False))
             elif operation == "ignore":
@@ -312,6 +321,8 @@ class Engine:
                     raise FileConflict("图片路径超出当前媒体目录")
                 if not within(path, target.root):
                     raise FileConflict("目标路径超出巡检根目录")
+                if asset == "nfo":
+                    data = preserve_manual_nfo(self.store, path, data, merge=True)
                 self.validate_candidate(target, asset, data, item, inspector)
                 if asset != "nfo":
                     data = self.encode_image(path, data)
@@ -336,6 +347,8 @@ class Engine:
             raise SourceUnavailable("来源没有可用内容")
         # Transient/IO/internal failures do not consume the no-improvement budget.
         error = next((e for e in errors if not isinstance(e, (CandidateRejected, SourceUnavailable))), errors[-1])
+        if isinstance(error, ManualProtection):
+            return {"status": "manual", "error_code": "manual_nfo", "message": str(error)}
         raise error
 
     def repair_translation(self, target, item, inspector, config, report):
@@ -354,6 +367,11 @@ class Engine:
                     "details": {"fields": {field: copy.deepcopy(detail) for field in plan["fields"]}}}
         data = output["nfo"].encode("utf-8")
         path = target.nfo()
+        try:
+            preserve_manual_nfo(self.store, path, data, merge=False)
+        except ManualProtection as exc:
+            return {"status": "manual", "error_code": "manual_nfo", "message": str(exc),
+                    "translation_pending_fields": plan["fields"]}
         self.validate_candidate(target, "nfo", data, item, inspector)
         if not within(path, target.root): raise FileConflict("NFO 目标超出检查目录")
         if self.stop.is_set(): raise TaskStopped()
@@ -555,7 +573,7 @@ class Engine:
             self.sync_pending_entries(report, entries)
         return self.done(report, "batch_limit" if limited else "completed")
 
-    def queue_sync(self, item, report, config, force=False):
+    def queue_sync(self, item, report, config, force=False, manual_asset=None):
         queued_keys = set()
         if item["emby_mode"] == "off" and not force:
             return queued_keys
@@ -565,6 +583,8 @@ class Engine:
         pending = self.store.read_state("pending_sync")
         receipts = self.store.read_state("sync_receipts")
         servers = [s.name for s in config.emby_servers] or [""]
+        local_only = manual_asset == "nfo" and results.get("nfo", {}).get("changed_fields") is not None and not (
+            set(results["nfo"]["changed_fields"]) & {"title", "plot", "tagline"})
         for server in servers:
             key = item["id"] + ":" + server
             old = pending.get(key, {})
@@ -591,7 +611,13 @@ class Engine:
                 item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [receipt["sync"]]
                 pending.pop(key, None)
                 continue
-            if server:
+            mode = item["emby_mode"]
+            if manual_asset and old.get("mode") == "compare":
+                mode = "compare"
+            # A canonical server entry may include older work; the manual action only authorizes this asset.
+            deferred = manual_asset and (local_only or set(merged) != {manual_asset} or mode == "compare"
+                                         or server and item["id"] + ":" in pending)
+            if server and not deferred:
                 queued_keys.add(key)
             if old.get("version") == version:
                 item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [old["sync"]]
@@ -600,9 +626,11 @@ class Engine:
                     "message": "" if server else "尚未配置 Emby 服务"}
             entry = {"target_id": item["id"], "target": item["target"], "server": server, "set_ids": report["set_ids"],
                      "version": version, "results": merged, "sync": sync, "status": sync["status"], "updated": time.time(),
-                     "local": item["local"], "requirements": item["requirements"], "mode": item["emby_mode"],
+                     "local": item["local"], "requirements": item["requirements"], "mode": mode,
                      "run_id": report["id"], "force": force or old.get("force", False)}
             pending[key] = entry
+            if deferred and not local_only and server:
+                sync["message"] = "该条目另有待同步内容，请在待同步页一起重试"
             item["sync"] = [s for s in item["sync"] if s.get("server") != server] + [sync]
         item["status"] = item_status(item)
         self.store.write_state("pending_sync", pending)
@@ -713,10 +741,19 @@ class Engine:
         for pending_key, entry in list(pending.items()):
             if entry.get("target") and not entry.get("server"):
                 servers = self.scoped(entry.get("set_ids", [])).emby_servers
+                if any(entry["target_id"] + ":" + server.name in pending for server in servers):
+                    # Keep the original work until configured server entries finish; never discard unmerged assets.
+                    continue
+                receipts = self.store.read_state("sync_receipts") if servers else {}
                 for server in servers:
                     new_key = entry["target_id"] + ":" + server.name
-                    pending.setdefault(new_key, {**entry, "server": server.name,
-                        "sync": {"server": server.name, "status": "pending", "signature": entry["version"]}})
+                    versions = receipts.get(new_key, {}).get("versions", {})
+                    outstanding = {a: r for a, r in entry.get("results", {}).items() if versions.get(a) != r.get("version")}
+                    if not outstanding and entry.get("mode") != "compare":
+                        continue
+                    version = digest({a: r["version"] for a, r in outstanding.items()}) if outstanding else entry["version"]
+                    pending[new_key] = {**entry, "server": server.name, "results": outstanding, "version": version,
+                        "sync": {"server": server.name, "status": "pending", "signature": version}}
                 if servers:
                     pending.pop(pending_key)
         self.store.write_state("pending_sync", pending)

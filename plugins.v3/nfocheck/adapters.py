@@ -1,9 +1,37 @@
 """The only MoviePilot scraping compatibility boundary; never changes host policy."""
+from copy import copy
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 from requests.exceptions import RequestException
-from .core import ALIASES, image_candidates, identities, parse_nfo, fingerprint
+from .core import ALIASES, ROOT_TAGS, image_candidates, identities, parse_nfo, fingerprint
 from .errors import SourceUnavailable, TaskStopped
+
+
+def _nfo_tmdb_id(xml):
+    from .manual import tmdb_ids
+    primary, compatible = tmdb_ids(xml)
+    return primary or compatible
+
+
+def _series_tmdb_id(target):
+    if not target.series:
+        raise SourceUnavailable("缺少所属剧目录，无法按季集查询 TMDB")
+    series = Path(target.series)
+    ids = set(re.findall(r"\{tmdb[-=]([1-9][0-9]*)\}", series.name, re.I))
+    try:
+        xml = parse_nfo((series / "tvshow.nfo").read_bytes())
+    except (FileNotFoundError, ValueError, ET.ParseError):
+        xml = None
+    if xml is not None and xml.tag == "tvshow":
+        series_id = _nfo_tmdb_id(xml)
+        if series_id:
+            ids.add(series_id)
+    if len(ids) > 1:
+        raise SourceUnavailable("所属剧的目录标记与 tvshow.nfo 中的 TMDB ID 存在冲突")
+    if not ids:
+        raise SourceUnavailable("请先在所属剧的 tvshow.nfo 或剧目录名中提供剧的 TMDB ID")
+    return ids.pop()
 
 
 class MoviePilotSource:
@@ -83,6 +111,74 @@ class MoviePilotSource:
                     raise candidate
                 result[asset].append(candidate)
         return result
+
+    def iter_tmdb_nfo(self, target, tmdb_id: str, stop):
+        """Look up an explicitly selected identity without using the current run's recognition."""
+        from app.sdk.media import MetaInfoPath, normalize_media_source, resolve_media_identity
+        from app.schemas.types import MediaType
+
+        if stop.is_set():
+            raise TaskStopped()
+        if not re.fullmatch(r"[1-9][0-9]*", tmdb_id) or target.kind not in ROOT_TAGS:
+            raise ValueError("请为当前媒体填写有效的 TMDB ID")
+        nested = target.kind in {"season", "episode"}
+        numbers = {}
+        if nested:
+            numbers = {"seasonnumber": target.season} if target.kind == "season" else {
+                "season": target.season, "episode": target.episode}
+            if None in numbers.values():
+                raise SourceUnavailable("无法确定当前条目的季集编号")
+        lookup_id = _series_tmdb_id(target) if nested else tmdb_id
+        source = normalize_media_source("tmdb")
+        if not source:
+            raise SourceUnavailable("MoviePilot 无法识别 TMDB 来源")
+        media_type = MediaType.MOVIE if target.kind == "movie" else MediaType.TV
+        info = self.media.recognize_media(mtype=media_type, media_source=source, media_id=lookup_id, cache=False)
+        if not info or info.type != media_type:
+            raise SourceUnavailable("TMDB 没有返回该类型的媒体")
+        actual_source, actual_id = resolve_media_identity(media=info)
+        if actual_source != source or str(actual_id) != lookup_id:
+            raise SourceUnavailable("MoviePilot 返回的媒体来源或 ID 与本次查询不一致")
+        if stop.is_set():
+            raise TaskStopped()
+        meta = MetaInfoPath(Path(target.media if nested else target.path))
+        meta.type = media_type
+        info = copy(info)
+        info.scrape_source = source
+        content = self.scraper.metadata_nfo(meta=meta, mediainfo=info, season=target.season, episode=target.episode)
+        if stop.is_set():
+            raise TaskStopped()
+        if not content:
+            raise SourceUnavailable("TMDB 没有提供该条目的 NFO")
+        data = content.encode("utf-8")
+        try:
+            xml = parse_nfo(data)
+        except (ValueError, ET.ParseError) as exc:
+            raise SourceUnavailable("TMDB 返回的 NFO 无法读取") from exc
+        if xml.tag != ROOT_TAGS[target.kind]:
+            raise SourceUnavailable("返回的 NFO 媒体层级不符")
+        if any((xml.findtext(tag) or "").strip() != str(number) for tag, number in numbers.items()):
+            raise SourceUnavailable("返回的 NFO 季集编号与当前条目不符")
+        candidate_id = _nfo_tmdb_id(xml)
+        if target.kind == "season" and not candidate_id:
+            # MoviePilot writes seasonnumber but omits the season's own ID from a TMDB season NFO.
+            if getattr(info, "episode_group", None):
+                raise SourceUnavailable("分集组的季编号经过重排，缺少可以核对的 TMDB 季 ID")
+            tmdb_info = getattr(info, "tmdb_info", None) or {}
+            seasons = tmdb_info.get("seasons") or []
+            season_ids = [str(row.get("id")) for row in seasons
+                          if isinstance(row, dict) and row.get("season_number") == target.season]
+            if season_ids != [tmdb_id]:
+                raise SourceUnavailable("TMDB 返回的当前季详情与填写的季 ID 不符，或缺少季 ID")
+            node = next((el for el in xml.findall("uniqueid")
+                         if (el.get("type") or "").strip().lower() == "tmdb"), None)
+            if node is None:
+                node = ET.SubElement(xml, "uniqueid", {"type": "tmdb"})
+            node.text = tmdb_id
+            data = ET.tostring(xml, encoding="utf-8", xml_declaration=True)
+        elif candidate_id != tmdb_id:
+            raise SourceUnavailable("返回的 NFO 未包含当前媒体层级的指定 TMDB ID")
+        yield target.nfo(), data
 
     def iter_candidates(self, target, asset, stop):
         from app.sdk.network import RequestUtils

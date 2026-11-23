@@ -233,7 +233,8 @@ class Store:
             page = max(1, min(page, max(1, (total + page_size - 1) // page_size)))
             result = {k: v for k, v in run.items() if k not in {"items", "errors"}}
             # Internal signatures, fingerprints and requirements are needed only by workers.
-            fields = ("id", "target", "status", "hits", "remaining_hits", "remaining_assets", "conflicts", "actions", "results", "sync", "needs_recheck", "emby_mode")
+            fields = ("id", "target", "status", "hits", "remaining_hits", "remaining_assets", "conflicts",
+                      "translation_conflict", "actions", "results", "sync", "needs_recheck", "emby_mode")
             result.update(items=[{k: i[k] for k in fields if k in i} for i in items[(page-1)*page_size:page*page_size]],
                           page=page, page_size=page_size, total=total, item_count=len(run["items"]),
                           statuses=sorted({i["status"] for i in run["items"]}),
