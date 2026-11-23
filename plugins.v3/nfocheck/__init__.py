@@ -20,6 +20,7 @@ from .engine import Engine
 from .errors import safe_message
 from .translation import TranslationBridge
 from .core import parse_nfo
+from .manual_api import ManualAPI
 
 
 def lifecycle(method):
@@ -52,11 +53,11 @@ class DeletePending(BaseModel):
     keys: list[str] = Field(min_length=1, max_length=1000)
 
 
-class NfoCheck(_PluginBase):
+class NfoCheck(_PluginBase, ManualAPI):
     plugin_name = "元数据巡检"
     plugin_desc = "按多套规则巡检 NFO 与图片，选择性补刮并通知 Emby 刷新。"
     plugin_icon = "https://raw.githubusercontent.com/JKRaks/mpp-nfochecker/main/plugins.v3/nfocheck/icon.png"
-    plugin_version = "1.2.11"
+    plugin_version = "1.3.1"
     _lifecycle_lock = threading.RLock()
     plugin_author = "NfoCheck Contributors"
     author_url = ""
@@ -261,6 +262,11 @@ class NfoCheck(_PluginBase):
             ("pending", self.api_pending, "GET", PendingData),
             ("delete_pending", self.api_delete_pending, "POST", DeletePendingData),
             ("backup_detail", self.api_backup_detail, "GET", BackupDetailData),
+            ("manual_detail", self.api_manual_detail, "GET", dict),
+            ("manual_candidates", self.api_manual_candidates, "GET", dict),
+            ("manual_candidates_by_tmdb", self.api_manual_candidates_by_tmdb, "POST", dict),
+            ("manual_preview", self.api_manual_preview, "POST", dict),
+            ("manual_save", self.api_manual_save, "POST", dict),
         ]
         return [{"path": "/" + name, "endpoint": endpoint, "methods": [method], "auth": "bear", "summary": name,
                  "response_model": model}

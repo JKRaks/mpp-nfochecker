@@ -43,7 +43,7 @@ const {cfg,live,error,notice,saving,dirty,configurationIssue,tab,pendingCount,st
       <div class="row"><button :class="{primary:tab==='settings'}" :disabled="live.busy||saving||!dirty" @click="guard(save)">{{saving?'正在保存…':'保存配置'}}</button><template v-if="tab==='rules'"><button :disabled="live.busy||saving||!!configurationIssue" @click="guard(()=>launch(true))">{{dirty?'保存并试运行':'试运行'}}</button><button class="primary" :disabled="live.busy||saving||!cfg.enabled||!!configurationIssue" @click="guard(()=>launch(false))">{{dirty?'保存并运行':'按规则运行'}}</button></template></div>
     </div>
   </div>
-  <DetailDialog :opened="viewer.opened.value" :title="viewer.title.value" :loading="viewer.loading.value" :error="viewer.error.value" :data="viewer.data.value" @close="viewer.close"/>
+  <DetailDialog v-if="viewer.localSession.value" :session="viewer.localSession.value" @close="viewer.close"/>
 </div>
 </template>
 <style src="./nfo.css"></style>
